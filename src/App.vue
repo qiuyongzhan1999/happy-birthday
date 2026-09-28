@@ -1,15 +1,15 @@
 <script setup>
-// 新月 · 生日惊喜 主框架：背景星空 + 场景流转 + 彩纸层
+// 小桐 · 生日惊喜 主框架：背景粉色梦幻 + 场景流转 + 彩纸层
 import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
-import bgStar from './assets/bg-star.jpg'
+import bgStar from './assets/bg-romance.jpg'
 import IntroScene from './components/scenes/IntroScene.vue'
-import WelcomeScene from './components/scenes/WelcomeScene.vue'
 import GameHubScene from './components/scenes/GameHubScene.vue'
 import CandleScene from './components/scenes/CandleScene.vue'
 import QuizScene from './components/scenes/QuizScene.vue'
 import ScratchScene from './components/scenes/ScratchScene.vue'
 import LockScene from './components/scenes/LockScene.vue'
 import GiftScene from './components/scenes/GiftScene.vue'
+import MeteorRain from './components/MeteorRain.vue'
 import { createConfetti, startStarField } from './composables/particles'
 
 const idx = ref(0)
@@ -19,7 +19,6 @@ const confettiCanvas = ref(null)
 
 const scenes = [
   IntroScene,
-  WelcomeScene,
   GameHubScene,
   CandleScene,
   QuizScene,
@@ -69,6 +68,7 @@ onBeforeUnmount(() => {
     <div class="bg-layer" :style="{ backgroundImage: `url(${bgStar})` }"></div>
     <div class="bg-veil"></div>
     <canvas ref="starCanvas" class="fx-canvas star-canvas"></canvas>
+    <MeteorRain />
 
     <div class="stage">
       <transition name="scene-fade" mode="out-in">
@@ -108,9 +108,9 @@ onBeforeUnmount(() => {
   z-index: 1;
   background: linear-gradient(
     160deg,
-    rgba(8, 5, 28, 0.55) 0%,
-    rgba(21, 13, 56, 0.42) 50%,
-    rgba(37, 22, 80, 0.6) 100%
+    rgba(42, 17, 71, 0.5) 0%,
+    rgba(87, 38, 95, 0.36) 50%,
+    rgba(138, 74, 124, 0.5) 100%
   );
 }
 

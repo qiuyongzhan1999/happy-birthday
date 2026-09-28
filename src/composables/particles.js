@@ -1,7 +1,7 @@
 /**
  * 粒子特效系统
- * - startStarField(canvas): 星空闪烁 + 偶发流星 + 触摸涟漪星光（常驻背景）
- * - createConfetti(canvas): 彩纸爆发 / 彩纸雨（礼物揭晓用）
+ * - startStarField(canvas): 星空闪烁 + 触摸涟漪星光（常驻背景）
+ * - createConfetti(canvas): 彩纸爆发 / 彩纸雨 / 烟花（礼物揭晓用）
  */
 
 /* ---------------- 星空 ---------------- */
@@ -14,9 +14,7 @@ export function startStarField(canvas, options = {}) {
   let running = true
 
   const stars = []
-  const shooting = []
   const ripples = []
-  let nextShootAt = performance.now() + 1200
 
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -40,18 +38,6 @@ export function startStarField(canvas, options = {}) {
         tint: Math.random() < 0.82 ? '255,255,255' : Math.random() < 0.5 ? '255,214,148' : '255,170,210',
       })
     }
-  }
-
-  function spawnShoot() {
-    const fromLeft = Math.random() < 0.5
-    shooting.push({
-      x: fromLeft ? -60 : Math.random() * W,
-      y: Math.random() * H * 0.4,
-      vx: 4 + Math.random() * 5,
-      vy: 1.2 + Math.random() * 2,
-      life: 1,
-      len: 70 + Math.random() * 80,
-    })
   }
 
   function onTouch(e) {
@@ -85,31 +71,6 @@ export function startStarField(canvas, options = {}) {
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
       ctx.fillStyle = `rgba(${s.tint},${a})`
       ctx.fill()
-    }
-
-    // 流星
-    if (now > nextShootAt) {
-      spawnShoot()
-      nextShootAt = now + 1500 + Math.random() * 3500
-    }
-    for (let i = shooting.length - 1; i >= 0; i--) {
-      const m = shooting[i]
-      m.x += m.vx
-      m.y += m.vy
-      m.life -= 0.012
-      if (m.life <= 0) {
-        shooting.splice(i, 1)
-        continue
-      }
-      const grad = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * 3.2, m.y - m.vy * 3.2)
-      grad.addColorStop(0, `rgba(255,240,210,${m.life})`)
-      grad.addColorStop(1, 'rgba(255,240,210,0)')
-      ctx.strokeStyle = grad
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(m.x, m.y)
-      ctx.lineTo(m.x - m.vx * 3.2, m.y - m.vy * 3.2)
-      ctx.stroke()
     }
 
     // 触摸涟漪

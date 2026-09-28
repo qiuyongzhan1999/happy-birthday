@@ -127,7 +127,7 @@ function doSpin() {
         <span class="ticket-count">
           剩余抽奖机会 <b>{{ tickets }}</b> 次
         </span>
-        <button class="btn-gold" type="button" :disabled="tickets <= 0" @click="openWheel">
+        <button class="btn-gold" type="button" @click="openWheel">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
             <circle cx="12" cy="12" r="2.4" fill="currentColor" />

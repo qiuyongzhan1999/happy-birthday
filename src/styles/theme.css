@@ -1,37 +1,37 @@
 /* ============================================
-   新月 · 主题变量
-   午夜深蓝紫星空 + 金色新月 + 粉色点缀
+   小桐 · 主题变量
+   粉色浪漫梦幻：奶油粉紫渐变 + 玫瑰金 + 爱心星光
    ============================================ */
 :root {
-  /* 夜空基底 */
-  --bg-deep: #08051c;
-  --bg-mid: #150d38;
-  --bg-soft: #251650;
-  --bg-glow: #33206b;
+  /* 梦幻粉紫夜空基底 */
+  --bg-deep: #2a1147;
+  --bg-mid: #57265f;
+  --bg-soft: #8a4a7c;
+  --bg-glow: #c568a6;
 
-  /* 金色主强调 */
-  --gold: #f2c468;
-  --gold-bright: #ffe6a8;
-  --gold-deep: #d9a441;
+  /* 玫瑰金主强调（文字/按钮/辉光统一粉化） */
+  --gold: #ffc4d6;
+  --gold-bright: #ffeaf3;
+  --gold-deep: #f795b6;
 
-  /* 粉色 / 暖橙点缀 */
+  /* 粉色 / 桃红点缀 */
   --pink: #ff7bac;
   --peach: #ffb38a;
 
   /* 文字 */
-  --ink: #f5f1ff;
-  --ink-dim: #b9aed8;
-  --ink-faint: #8a7fb5;
+  --ink: #fff7fb;
+  --ink-dim: #ecc9dc;
+  --ink-faint: #b98aa8;
 
   /* 玻璃卡片 */
-  --glass-bg: rgba(38, 24, 84, 0.42);
-  --glass-border: rgba(255, 214, 148, 0.22);
+  --glass-bg: rgba(99, 34, 92, 0.4);
+  --glass-border: rgba(255, 190, 218, 0.3);
   --glass-blur: 14px;
 
   /* 阴影与辉光 */
-  --glow-gold: 0 0 24px rgba(242, 196, 104, 0.45);
-  --glow-pink: 0 0 24px rgba(255, 123, 172, 0.35);
-  --shadow-card: 0 18px 44px rgba(0, 0, 0, 0.45);
+  --glow-gold: 0 0 24px rgba(255, 150, 190, 0.5);
+  --glow-pink: 0 0 24px rgba(255, 123, 172, 0.45);
+  --shadow-card: 0 18px 44px rgba(80, 10, 60, 0.5);
 
   /* 圆角 */
   --radius-lg: 28px;

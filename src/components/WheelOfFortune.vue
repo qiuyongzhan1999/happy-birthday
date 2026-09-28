@@ -73,7 +73,8 @@ function drawPrize(i) {
   ctx.clip()
   if (prize.img === 'red' && redImg && redImg.width) {
     const gs = redImg.width / 3
-    ctx.drawImage(redImg, (prize.cell % 3) * gs, 0, gs, redImg.height, -s, -s, s * 2, s * 2)
+    const sy = (redImg.height - gs) / 2
+    ctx.drawImage(redImg, (prize.cell % 3) * gs, sy, gs, gs, -s, -s, s * 2, s * 2)
   } else if (img && img.width) {
     const gs = img.width / 4
     const row = Math.floor(prize.cell / 4)
@@ -218,9 +219,9 @@ defineExpose({ spin })
 
 .wheel-box {
   position: relative;
-  width: min(52vmin, 360px);
-  height: min(52vmin, 360px);
-  filter: drop-shadow(0 0 26px rgba(242, 196, 104, 0.28));
+  width: min(66vmin, 520px);
+  height: min(66vmin, 520px);
+  filter: drop-shadow(0 0 30px rgba(255, 123, 172, 0.35));
 }
 
 .wheel-canvas {
