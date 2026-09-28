@@ -48,6 +48,9 @@ provide('confetti', {
   rain(ms) {
     confettiCtrl?.rain(ms)
   },
+  fireworks(ms) {
+    confettiCtrl?.fireworks(ms)
+  },
 })
 
 onMounted(() => {

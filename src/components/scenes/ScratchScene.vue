@@ -40,7 +40,9 @@ function paintCover() {
 }
 
 function pos(e) {
-  const rect = canvasRef.value.getBoundingClientRect()
+  const c = canvasRef.value
+  if (!c) return null
+  const rect = c.getBoundingClientRect()
   const clientX = e.clientX ?? (e.touches && e.touches[0] ? e.touches[0].clientX : null)
   const clientY = e.clientY ?? (e.touches && e.touches[0] ? e.touches[0].clientY : null)
   if (clientX == null || clientY == null) return null

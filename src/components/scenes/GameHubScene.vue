@@ -3,6 +3,7 @@
 import { computed, ref } from 'vue'
 import { CONFIG } from '../../config'
 import prizesGrid from '../../assets/prizes-grid.jpg'
+import redEnvelopes from '../../assets/red-envelopes.jpg'
 import CatchStarsGame from '../games/CatchStarsGame.vue'
 import MemoryGame from '../games/MemoryGame.vue'
 import PopBubblesGame from '../games/PopBubblesGame.vue'
@@ -25,7 +26,7 @@ const games = [
 ]
 
 const doneCount = computed(() => Object.values(done.value).filter(Boolean).length)
-const allTicketsUsed = computed(() => tickets.value >= 3)
+const allTicketsUsed = computed(() => doneCount.value >= games.length)
 
 function openGame(key) {
   sfxClick()
@@ -54,9 +55,16 @@ function onSpun(prize) {
   spinning.value = false
 }
 
-function prizePos(cell) {
-  const row = Math.floor(cell / 4)
-  const col = cell % 4
+function prizePos(r) {
+  if (r.img === 'red') {
+    return {
+      backgroundImage: `url(${redEnvelopes})`,
+      backgroundSize: '300% 100%',
+      backgroundPosition: `${((r.cell % 3) / 2) * 100}% 50%`,
+    }
+  }
+  const row = Math.floor(r.cell / 4)
+  const col = r.cell % 4
   return {
     backgroundImage: `url(${prizesGrid})`,
     backgroundSize: '400% 400%',
@@ -117,7 +125,7 @@ function doSpin() {
 
       <div class="wheel-entry">
         <span class="ticket-count">
-          剩余抽奖机会 <b>{{ 3 - tickets }}</b> 次
+          剩余抽奖机会 <b>{{ tickets }}</b> 次
         </span>
         <button class="btn-gold" type="button" :disabled="tickets <= 0" @click="openWheel">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
@@ -131,7 +139,7 @@ function doSpin() {
 
       <div v-if="results.length" class="won-list">
         <span v-for="(r, i) in results" :key="i" class="won-chip">
-          <i class="won-thumb" :style="prizePos(r.cell)"></i>
+          <i class="won-thumb" :style="prizePos(r)"></i>
           {{ r.name }}
         </span>
       </div>
@@ -171,6 +179,7 @@ function doSpin() {
         ref="wheelRef"
         :prizes="CONFIG.prizes"
         :grid-url="prizesGrid"
+        :red-url="redEnvelopes"
         :tickets="tickets"
         @spun="onSpun"
       />
@@ -186,7 +195,7 @@ function doSpin() {
 
       <transition-group name="chip" tag="div" class="won-list">
         <div v-for="(r, i) in results" :key="i" class="won-card">
-          <i class="won-thumb" :style="prizePos(r.cell)"></i>
+          <i class="won-thumb" :style="prizePos(r)"></i>
           <div class="won-info">
             <b>{{ r.name }}</b>
             <span>{{ r.tag }}</span>

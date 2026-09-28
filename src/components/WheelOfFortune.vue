@@ -6,6 +6,7 @@ import { sfxClick, sfxConfetti, sfxWin } from '../composables/audio'
 const props = defineProps({
   prizes: { type: Array, required: true },
   gridUrl: { type: String, required: true },
+  redUrl: { type: String, default: '' },
   tickets: { type: Number, default: 0 },
 })
 
@@ -21,6 +22,7 @@ let D = 0
 let dpr = 1
 let rotate = 0
 let img = null
+let redImg = null
 let highlightIdx = -1
 let spinTimer = null
 
@@ -57,26 +59,57 @@ function drawSector(i, color) {
 
 function drawPrize(i) {
   const prize = props.prizes[i]
-  const cell = prize.cell
-  const row = Math.floor(cell / 4)
-  const col = cell % 4
   const mid = ((i * 30 + 15 - 90) * Math.PI) / 180
-  const radius = D * 0.3
+  const radius = D * 0.36
   const cx = D / 2 + Math.cos(mid) * radius
   const cy = D / 2 + Math.sin(mid) * radius
-  const s = D * 0.085
+  const s = D * 0.052
 
+  // 奖品图（圆形裁切）
   ctx.save()
   ctx.translate(cx, cy)
   ctx.beginPath()
   ctx.arc(0, 0, s, 0, Math.PI * 2)
   ctx.clip()
-  if (img && img.width) {
+  if (prize.img === 'red' && redImg && redImg.width) {
+    const gs = redImg.width / 3
+    ctx.drawImage(redImg, (prize.cell % 3) * gs, 0, gs, redImg.height, -s, -s, s * 2, s * 2)
+  } else if (img && img.width) {
     const gs = img.width / 4
+    const row = Math.floor(prize.cell / 4)
+    const col = prize.cell % 4
     ctx.drawImage(img, col * gs, row * gs, gs, gs, -s, -s, s * 2, s * 2)
   } else {
     ctx.fillStyle = 'rgba(255,255,255,0.5)'
     ctx.fillRect(-s, -s, s * 2, s * 2)
+  }
+  ctx.restore()
+  // 图外细描边
+  ctx.beginPath()
+  ctx.arc(cx, cy, s, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  // 中文名（沿半径方向排布，位于图片内侧，间距拉开）
+  ctx.save()
+  ctx.translate(D / 2, D / 2)
+  ctx.rotate(mid)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const m = prize.name.match(/^(\d+)(.*)$/)
+  if (m) {
+    // 红包：数字大行 + “红包”小行
+    ctx.fillStyle = 'rgba(130,16,36,0.95)'
+    ctx.font = `800 ${D * 0.033}px "PingFang SC","Microsoft YaHei",sans-serif`
+    ctx.fillText(m[1], 0, -D * 0.218)
+    ctx.fillStyle = 'rgba(130,16,36,0.8)'
+    ctx.font = `700 ${D * 0.021}px "PingFang SC","Microsoft YaHei",sans-serif`
+    ctx.fillText(m[2], 0, -D * 0.265)
+  } else {
+    ctx.fillStyle = 'rgba(58,36,16,0.92)'
+    ctx.font = `700 ${D * 0.031}px "PingFang SC","Microsoft YaHei",sans-serif`
+    ctx.fillText(prize.name, 0, -D * 0.245)
   }
   ctx.restore()
 }
@@ -149,6 +182,11 @@ onMounted(() => {
   img = new Image()
   img.onload = () => draw()
   img.src = props.gridUrl
+  if (props.redUrl) {
+    redImg = new Image()
+    redImg.onload = () => draw()
+    redImg.src = props.redUrl
+  }
 })
 
 onBeforeUnmount(() => {

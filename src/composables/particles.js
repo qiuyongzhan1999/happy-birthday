@@ -216,6 +216,31 @@ export function createConfetti(canvas) {
     }
   }
 
+  // 烟花：在屏幕上随机高处绽放一簇发光粒子
+  function spawnFirework() {
+    const fx = 80 + Math.random() * (W - 160)
+    const fy = H * (0.14 + Math.random() * 0.3)
+    const hue = COLORS[(Math.random() * COLORS.length) | 0]
+    for (let k = 0; k < 46; k++) {
+      const angle = Math.random() * Math.PI * 2
+      const speed = 2.4 + Math.random() * 5.6
+      particles.push({
+        x: fx,
+        y: fy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 0.9,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.1,
+        size: 3 + Math.random() * 3.4,
+        color: hue,
+        shape: Math.random() < 0.55 ? 'spark' : 'rect',
+        life: 1,
+        decay: 0.007 + Math.random() * 0.008,
+        gravity: 0.05,
+      })
+    }
+  }
+
   function frame() {
     if (!running) return
     ctx.clearRect(0, 0, W, H)
@@ -237,6 +262,14 @@ export function createConfetti(canvas) {
       ctx.fillStyle = p.color
       if (p.shape === 'rect') {
         ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66)
+      } else if (p.shape === 'spark') {
+        // 发光星点
+        ctx.shadowColor = p.color
+        ctx.shadowBlur = 12
+        ctx.beginPath()
+        ctx.arc(0, 0, p.size / 2.2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.shadowBlur = 0
       } else {
         ctx.beginPath()
         ctx.arc(0, 0, p.size / 2.4, 0, Math.PI * 2)
@@ -259,6 +292,12 @@ export function createConfetti(canvas) {
     /** 全屏彩纸雨（短暂持续） */
     rain(ms = 2600) {
       const timer = setInterval(spawnRain, 140)
+      setTimeout(() => clearInterval(timer), ms)
+    },
+    /** 屏幕高处烟花绽放（短暂持续） */
+    fireworks(ms = 2600) {
+      spawnFirework()
+      const timer = setInterval(spawnFirework, 340)
       setTimeout(() => clearInterval(timer), ms)
     },
     stop() {

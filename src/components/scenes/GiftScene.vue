@@ -1,5 +1,5 @@
 <script setup>
-// 礼物揭晓：盒子打开 → 彩纸爆发 → 口红与项链登场
+// 礼物揭晓 · 大屏炫酷版：光束开场 → 礼盒升起弹跳 → 开盒烟花爆发 → 礼物卡光晕渐现 → 祝福语打字机
 import { inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import MoonMark from '../MoonMark.vue'
 import { CONFIG } from '../../config'
@@ -10,35 +10,60 @@ const gift = CONFIG.gift
 const confetti = inject('confetti', null)
 const opened = ref(false)
 const showGifts = ref(false)
+const typedBless = ref('')
 let openTimer = null
 let giftTimer = null
+let typeTimer = null
+
+function typeBless() {
+  const text = gift.bless
+  typedBless.value = ''
+  let i = 0
+  typeTimer = setInterval(() => {
+    i += 1
+    typedBless.value = text.slice(0, i)
+    if (i >= text.length) {
+      clearInterval(typeTimer)
+      typeTimer = null
+    }
+  }, 90)
+}
 
 function openBox() {
   if (opened.value) return
   opened.value = true
   sfxDigit()
-  confetti?.burst(window.innerWidth / 2, window.innerHeight / 2, 110)
-  confetti?.rain(2400)
+  // 全屏大爆发 + 彩纸雨 + 烟花
+  confetti?.burst(window.innerWidth / 2, window.innerHeight / 2, 160)
+  confetti?.burst(window.innerWidth / 2, window.innerHeight * 0.3, 90)
+  confetti?.rain(3200)
+  confetti?.fireworks?.(2600)
   sfxConfetti()
   openTimer = setTimeout(() => {
     showGifts.value = true
     sfxWin()
-    confetti?.burst(window.innerWidth / 2, window.innerHeight * 0.3, 70)
-  }, 1200)
+    confetti?.burst(window.innerWidth / 2, window.innerHeight * 0.32, 80)
+    confetti?.fireworks?.(2400)
+    typeBless()
+  }, 1500)
 }
 
 onMounted(() => {
-  openTimer = setTimeout(openBox, 900)
+  openTimer = setTimeout(openBox, 950)
 })
 
 onBeforeUnmount(() => {
   if (openTimer) clearTimeout(openTimer)
   if (giftTimer) clearTimeout(giftTimer)
+  if (typeTimer) clearInterval(typeTimer)
 })
 </script>
 
 <template>
   <section class="scene active gift-scene">
+    <!-- 全屏光束扫过 -->
+    <div class="light-beam" aria-hidden="true"></div>
+
     <div class="step-tag">最后的惊喜</div>
 
     <transition name="box-hide">
@@ -59,11 +84,11 @@ onBeforeUnmount(() => {
 
     <transition name="gift-rise">
       <div v-if="showGifts" class="gifts-stage">
-        <MoonMark :size="64" />
+        <MoonMark :size="76" />
         <h2 class="gift-title gold-text">{{ gift.title }}</h2>
 
         <div class="gift-cards">
-          <div class="gift-card">
+          <div class="gift-card card--lip">
             <svg class="gift-art" viewBox="0 0 64 64" aria-hidden="true">
               <defs>
                 <linearGradient id="lip-body" x1="0" y1="0" x2="1" y2="1">
@@ -85,7 +110,7 @@ onBeforeUnmount(() => {
             <span class="gift-line">{{ gift.line1 }}</span>
           </div>
 
-          <div class="gift-card">
+          <div class="gift-card card--necklace">
             <svg class="gift-art" viewBox="0 0 64 64" aria-hidden="true">
               <defs>
                 <linearGradient id="chain-g" x1="0" y1="0" x2="0" y2="1">
@@ -120,7 +145,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <p class="bless">{{ gift.bless }}</p>
+        <p class="bless" :class="{ typing: typeTimer }">
+          {{ typedBless }}<span class="caret" v-if="typedBless && typedBless.length < gift.bless.length"></span>
+        </p>
       </div>
     </transition>
   </section>
@@ -129,6 +156,38 @@ onBeforeUnmount(() => {
 <style scoped>
 .gift-scene {
   gap: clamp(12px, 2vmin, 24px);
+  overflow: hidden;
+}
+
+/* —— 全屏光束 —— */
+.light-beam {
+  position: absolute;
+  top: -30%;
+  left: -30%;
+  width: 60%;
+  height: 170%;
+  background: linear-gradient(100deg, transparent 0%, rgba(255, 230, 168, 0.16) 45%, rgba(255, 230, 168, 0.32) 50%, rgba(255, 230, 168, 0.16) 55%, transparent 100%);
+  filter: blur(2px);
+  transform: rotate(16deg);
+  animation: beam-sweep 3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+@keyframes beam-sweep {
+  0% {
+    left: -80%;
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  70% {
+    left: 130%;
+    opacity: 0.5;
+  }
+  100% {
+    left: 150%;
+    opacity: 0;
+  }
 }
 
 /* —— 盒子阶段 —— */
@@ -144,9 +203,25 @@ onBeforeUnmount(() => {
 
 .gift-box {
   position: relative;
-  width: clamp(180px, 26vmin, 260px);
-  height: clamp(160px, 23vmin, 230px);
-  animation: floaty 3.6s ease-in-out infinite;
+  width: clamp(200px, 30vmin, 300px);
+  height: clamp(178px, 26.5vmin, 265px);
+  animation: rise-bounce 0.9s cubic-bezier(0.22, 1.4, 0.32, 1) both;
+}
+@keyframes rise-bounce {
+  0% {
+    transform: translateY(42vh) scale(0.55);
+    opacity: 0;
+  }
+  55% {
+    transform: translateY(-2.4vh) scale(1.04);
+    opacity: 1;
+  }
+  75% {
+    transform: translateY(1vh) scale(0.985);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 .box-body {
   position: absolute;
@@ -154,9 +229,9 @@ onBeforeUnmount(() => {
   right: 0;
   bottom: 0;
   height: 66%;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(180deg, #e75a86, #b02c56);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
 }
 .box-lid {
   position: absolute;
@@ -164,9 +239,9 @@ onBeforeUnmount(() => {
   right: -8%;
   top: 0;
   height: 34%;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(180deg, #ff8fb2, #e75a86);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.32);
   transform-origin: 12% 100%;
   transition: transform 0.8s cubic-bezier(0.34, 1.4, 0.5, 1), opacity 0.7s ease;
   z-index: 3;
@@ -204,8 +279,8 @@ onBeforeUnmount(() => {
   left: 50%;
   top: 16%;
   transform: translate(-50%, -50%);
-  width: clamp(44px, 6vmin, 60px);
-  height: clamp(34px, 4.6vmin, 46px);
+  width: clamp(48px, 7vmin, 66px);
+  height: clamp(38px, 5.4vmin, 52px);
   z-index: 5;
   background:
     radial-gradient(ellipse at 30% 50%, #ffe6a8 0%, #e8b453 70%),
@@ -218,7 +293,7 @@ onBeforeUnmount(() => {
 }
 
 .box-stage.open .box-lid {
-  transform: rotate(-42deg) translate(-46px, -52px) scale(0.92);
+  transform: rotate(-42deg) translate(-52px, -58px) scale(0.92);
   opacity: 0;
 }
 .box-stage.open .gift-box {
@@ -226,20 +301,20 @@ onBeforeUnmount(() => {
 }
 .box-shine {
   position: absolute;
-  top: 20%;
+  top: 12%;
   left: 50%;
-  width: 60%;
-  height: 60%;
+  width: 90%;
+  height: 90%;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 230, 168, 0.5), transparent 70%);
+  background: radial-gradient(circle, rgba(255, 230, 168, 0.65), transparent 70%);
   opacity: 0;
   transition: opacity 0.7s ease 0.15s;
   pointer-events: none;
 }
 .box-stage.open .box-shine {
   opacity: 1;
-  animation: pulse-soft 1.6s ease-in-out infinite;
+  animation: pulse-soft 1.4s ease-in-out infinite;
 }
 
 .box-tip {
@@ -253,7 +328,7 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-/* —— 礼物阶段 —— */
+/* —— 礼物阶段 · 大屏展示 —— */
 .gifts-stage {
   display: flex;
   flex-direction: column;
@@ -262,55 +337,120 @@ onBeforeUnmount(() => {
 }
 .gifts-stage > svg {
   margin-bottom: 0.4vmin;
+  filter: drop-shadow(0 0 18px rgba(242, 196, 104, 0.6));
+  animation: pulse-soft 2.2s ease-in-out infinite;
 }
 .gift-title {
-  font-size: clamp(26px, 4.4vmin, 42px);
+  font-size: clamp(34px, 6.4vmin, 64px);
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 30px rgba(242, 196, 104, 0.55);
+  animation: title-glow 2.4s ease-in-out infinite;
+}
+@keyframes title-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 22px rgba(242, 196, 104, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 40px rgba(242, 196, 104, 0.85);
+  }
 }
 
 .gift-cards {
   display: flex;
-  gap: clamp(14px, 2.6vmin, 30px);
+  gap: clamp(16px, 3vmin, 36px);
   margin-top: 1vmin;
 }
 .gift-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  width: clamp(150px, 22vmin, 210px);
-  padding: clamp(18px, 3vmin, 28px) clamp(16px, 2.6vmin, 26px);
+  gap: 8px;
+  width: clamp(170px, 26vmin, 260px);
+  padding: clamp(22px, 3.6vmin, 36px) clamp(18px, 3vmin, 30px);
   border-radius: var(--radius-lg);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow-card);
+  animation: card-in 0.9s cubic-bezier(0.22, 1.3, 0.36, 1) both;
+}
+.card--necklace {
+  animation-delay: 0.18s;
+}
+@keyframes card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(26px) scale(0.45) rotateY(60deg);
+    filter: blur(6px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateY(0);
+  }
+}
+.gift-card:hover {
+  transform: translateY(-4px) scale(1.02);
 }
 .gift-art {
-  width: clamp(64px, 9vmin, 88px);
-  height: clamp(64px, 9vmin, 88px);
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+  width: clamp(72px, 10vmin, 100px);
+  height: clamp(72px, 10vmin, 100px);
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.4));
 }
 .gift-name {
-  font-size: clamp(18px, 2.6vmin, 24px);
+  font-size: clamp(20px, 3vmin, 28px);
   color: var(--gold-bright);
   letter-spacing: 0.08em;
 }
 .gift-line {
-  font-size: clamp(12px, 1.7vmin, 15px);
+  font-size: clamp(13px, 1.8vmin, 16px);
   color: var(--ink-dim);
   letter-spacing: 0.04em;
   line-height: 1.6;
 }
 
 .bless {
-  margin-top: 1vmin;
-  font-size: clamp(15px, 2.2vmin, 20px);
+  margin-top: 1.2vmin;
+  font-size: clamp(18px, 2.8vmin, 26px);
   color: var(--ink);
-  letter-spacing: 0.1em;
-  text-shadow: 0 0 24px rgba(242, 196, 104, 0.35);
+  letter-spacing: 0.12em;
+  min-height: 1.6em;
+  text-shadow: 0 0 26px rgba(242, 196, 104, 0.45);
+  animation: fade-up 0.8s ease both;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.caret {
+  display: inline-block;
+  width: 0.14em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: var(--gold-bright);
+  animation: caret-blink 0.8s step-end infinite;
+}
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* —— 过渡 —— */

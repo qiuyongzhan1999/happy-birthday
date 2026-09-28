@@ -45,6 +45,7 @@ export const CONFIG = {
   ],
 
   // —— 大转盘奖品（12 个，cell 为 4x4 网格图中的格子序号 0-15）——
+  // 红包奖品：img: 'red' 表示从 red-envelopes.jpg（3 列）裁剪，cell 为列号 0-2
   prizes: [
     { name: '口红', cell: 0, tag: '正红显白，衬你的笑' },
     { name: '香水', cell: 1, tag: '香气是藏不住的温柔' },
@@ -55,9 +56,9 @@ export const CONFIG = {
     { name: '面霜', cell: 6, tag: '秋冬的温柔守护' },
     { name: '拍立得', cell: 7, tag: '记录我们每个瞬间' },
     { name: '项链', cell: 8, tag: '想亲手为你戴上' },
-    { name: '耳环', cell: 9, tag: '珍珠映着你的侧脸' },
-    { name: '手链', cell: 10, tag: '腕间的一点星光' },
-    { name: '小熊玩偶', cell: 11, tag: '替我不在时抱抱你' },
+    { name: '188红包', cell: 0, img: 'red', tag: '188 元现金红包' },
+    { name: '288红包', cell: 1, img: 'red', tag: '288 元现金红包' },
+    { name: '520红包', cell: 2, img: 'red', tag: '520 元现金红包' },
   ],
 
   // —— 礼物 ——
