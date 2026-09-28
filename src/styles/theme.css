@@ -1,0 +1,44 @@
+/* ============================================
+   新月 · 主题变量
+   午夜深蓝紫星空 + 金色新月 + 粉色点缀
+   ============================================ */
+:root {
+  /* 夜空基底 */
+  --bg-deep: #08051c;
+  --bg-mid: #150d38;
+  --bg-soft: #251650;
+  --bg-glow: #33206b;
+
+  /* 金色主强调 */
+  --gold: #f2c468;
+  --gold-bright: #ffe6a8;
+  --gold-deep: #d9a441;
+
+  /* 粉色 / 暖橙点缀 */
+  --pink: #ff7bac;
+  --peach: #ffb38a;
+
+  /* 文字 */
+  --ink: #f5f1ff;
+  --ink-dim: #b9aed8;
+  --ink-faint: #8a7fb5;
+
+  /* 玻璃卡片 */
+  --glass-bg: rgba(38, 24, 84, 0.42);
+  --glass-border: rgba(255, 214, 148, 0.22);
+  --glass-blur: 14px;
+
+  /* 阴影与辉光 */
+  --glow-gold: 0 0 24px rgba(242, 196, 104, 0.45);
+  --glow-pink: 0 0 24px rgba(255, 123, 172, 0.35);
+  --shadow-card: 0 18px 44px rgba(0, 0, 0, 0.45);
+
+  /* 圆角 */
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --radius-sm: 14px;
+
+  /* 字体 */
+  --font-display: 'PingFang SC', 'MiSans', 'HarmonyOS Sans SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+}

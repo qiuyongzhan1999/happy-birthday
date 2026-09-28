@@ -1,0 +1,178 @@
+/* ============================================
+   新月 · 全局基础样式
+   ============================================ */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-display);
+  color: var(--ink);
+  background: linear-gradient(160deg, var(--bg-deep) 0%, var(--bg-mid) 55%, var(--bg-soft) 100%);
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* 金色标题字 */
+.gold-text {
+  background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 45%, var(--gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* 玻璃卡片 */
+.glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow-card);
+}
+
+/* 主按钮：金色渐变 + 辉光 */
+.btn-gold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 46px;
+  border-radius: 999px;
+  font-size: clamp(20px, 3.2vmin, 30px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #3a2410;
+  background: linear-gradient(180deg, var(--gold-bright) 0%, var(--gold) 55%, var(--gold-deep) 100%);
+  box-shadow: var(--glow-gold), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+}
+.btn-gold:active {
+  transform: scale(0.94);
+  filter: brightness(1.06);
+}
+
+/* 次级按钮：玻璃风 */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 34px;
+  border-radius: 999px;
+  font-size: clamp(16px, 2.4vmin, 22px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.btn-ghost:active {
+  transform: scale(0.95);
+  background: rgba(255, 214, 148, 0.14);
+}
+
+/* 关卡步骤标签 */
+.step-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: clamp(13px, 1.9vmin, 17px);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--gold-bright);
+  background: rgba(242, 196, 104, 0.12);
+  border: 1px solid rgba(242, 196, 104, 0.35);
+}
+
+/* 场景通用布局：全屏居中 */
+.scene {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 2.6vmin, 30px);
+  padding: clamp(20px, 4vmin, 48px);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.94) translateY(14px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.scene.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1) translateY(0);
+}
+
+/* 动画 */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(26px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 场景切换过渡 */
+.scene-fade-enter-active,
+.scene-fade-leave-active {
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+.scene-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.scene-fade-leave-to {
+  opacity: 0;
+  transform: scale(1.015);
+}
