@@ -4,28 +4,14 @@ import { computed, onBeforeUnmount, onMounted, provide, ref } from 'vue'
 import bgStar from './assets/bg-romance.jpg'
 import IntroScene from './components/scenes/IntroScene.vue'
 import GameHubScene from './components/scenes/GameHubScene.vue'
-import CandleScene from './components/scenes/CandleScene.vue'
-import QuizScene from './components/scenes/QuizScene.vue'
-import ScratchScene from './components/scenes/ScratchScene.vue'
-import LockScene from './components/scenes/LockScene.vue'
-import GiftScene from './components/scenes/GiftScene.vue'
 import MeteorRain from './components/MeteorRain.vue'
 import { createConfetti, startStarField } from './composables/particles'
 
 const idx = ref(0)
-const digits = ref([])
 const starCanvas = ref(null)
 const confettiCanvas = ref(null)
 
-const scenes = [
-  IntroScene,
-  GameHubScene,
-  CandleScene,
-  QuizScene,
-  ScratchScene,
-  LockScene,
-  GiftScene,
-]
+const scenes = [IntroScene, GameHubScene]
 const current = computed(() => scenes[idx.value])
 
 let starCtrl = null
@@ -33,11 +19,6 @@ let confettiCtrl = null
 
 function next() {
   idx.value = Math.min(scenes.length - 1, idx.value + 1)
-}
-
-function collectDigit(d) {
-  digits.value.push(d)
-  next()
 }
 
 provide('confetti', {
@@ -71,14 +52,11 @@ onBeforeUnmount(() => {
     <MeteorRain />
 
     <div class="stage">
-      <transition name="scene-fade" mode="out-in">
+      <transition name="scene-fade" mode="out-in" :duration="350">
         <component
           :is="current"
           :key="idx"
           @go="next"
-          @continue="next"
-          @digit="collectDigit"
-          @unlock="next"
         />
       </transition>
     </div>
@@ -131,7 +109,10 @@ onBeforeUnmount(() => {
 
 .stage {
   position: absolute;
-  inset: 0;
-  z-index: 10;
+    inset: 0;
+    display: flex;
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
 }
 </style>

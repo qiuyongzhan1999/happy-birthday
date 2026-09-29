@@ -21,7 +21,7 @@
   /* 文字 */
   --ink: #fff7fb;
   --ink-dim: #ecc9dc;
-  --ink-faint: #b98aa8;
+  --ink-faint: #fff;
 
   /* 玻璃卡片 */
   --glass-bg: rgba(99, 34, 92, 0.4);

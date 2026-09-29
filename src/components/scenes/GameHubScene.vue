@@ -1,32 +1,26 @@
 <script setup>
-// 惊喜游乐园：3 个小游戏 → 每完成 1 个获得 1 次抽奖机会 → 大转盘抽奖
+// 惊喜游乐园：回忆拼图 + 默契问答 → 抽奖机会；红包雨独立；大转盘抽奖
 import { computed, ref } from 'vue'
 import { CONFIG } from '../../config'
-import prizesGrid from '../../assets/prizes-grid.jpg'
-import redEnvelopes from '../../assets/red-envelopes.jpg'
-import CatchStarsGame from '../games/CatchStarsGame.vue'
-import MemoryGame from '../games/MemoryGame.vue'
-import PopBubblesGame from '../games/PopBubblesGame.vue'
+import { getPrizeIconUrl } from '../../composables/prizeIcons'
+import PuzzleGame from '../games/PuzzleGame.vue'
+import ChemistryQuiz from '../games/ChemistryQuiz.vue'
+import RedPacketRain from '../games/RedPacketRain.vue'
 import WheelOfFortune from '../WheelOfFortune.vue'
 import { sfxClick, sfxDigit } from '../../composables/audio'
 
-const emit = defineEmits(['continue'])
-
-const view = ref('hub') // hub | catch | memory | pop | wheel
-const done = ref({ catch: false, memory: false, pop: false })
+const view = ref('hub') // hub | puzzle | chem | rain | wheel
+const done = ref({ puzzle: false, chem: false })
 const tickets = ref(0)
 const results = ref([])
 const spinning = ref(false)
 const wheelRef = ref(null)
+const rainPlayed = ref(false)
 
 const games = [
-  { key: 'catch', name: '接星星', desc: '接住落下的星星', doneKey: 'catch' },
-  { key: 'memory', name: '翻牌配对', desc: '找到三对图案', doneKey: 'memory' },
-  { key: 'pop', name: '点泡泡', desc: '戳破漂浮泡泡', doneKey: 'pop' },
+  { key: 'puzzle', name: '回忆拼图', doneKey: 'puzzle' },
+  { key: 'chem', name: '默契问答', doneKey: 'chem' },
 ]
-
-const doneCount = computed(() => Object.values(done.value).filter(Boolean).length)
-const allTicketsUsed = computed(() => doneCount.value >= games.length)
 
 function openGame(key) {
   sfxClick()
@@ -44,43 +38,53 @@ function onGameDone(key) {
   setTimeout(() => (view.value = 'hub'), 300)
 }
 
+function openRain() {
+  sfxClick()
+  view.value = 'rain'
+}
+
+function onRainDone() {
+  rainPlayed.value = true
+  view.value = 'hub'
+}
+
 function openWheel() {
   sfxClick()
   view.value = 'wheel'
 }
 
+// 转盘展示全部奖品扇区；核心奖品（兰蔻小黑瓶 / 老庙黄金项链）固定必中：
+// 第 1 次抽奖在两者中随机，抽中后移出候选，第 2 次必中另一个
+const CORE_NAMES = ['兰蔻超修小黑瓶精华', '老庙黄金项链']
+const wheelPrizes = [
+  ...CONFIG.prizes.filter((p) => !CORE_NAMES.includes(p.name)),
+  ...CONFIG.prizes.filter((p) => CORE_NAMES.includes(p.name)),
+]
+const remaining = ref(wheelPrizes)
+const wonCore = ref([])
+const unwonCore = computed(() => CORE_NAMES.filter((n) => !wonCore.value.includes(n)))
+
 function onSpun(prize) {
   tickets.value -= 1
   results.value = [prize, ...results.value]
+  if (CORE_NAMES.includes(prize.name)) wonCore.value.push(prize.name)
   spinning.value = false
-}
-
-function prizePos(r) {
-  if (r.img === 'red') {
-    return {
-      backgroundImage: `url(${redEnvelopes})`,
-      backgroundSize: '300% 100%',
-      backgroundPosition: `${((r.cell % 3) / 2) * 100}% 50%`,
-    }
-  }
-  const row = Math.floor(r.cell / 4)
-  const col = r.cell % 4
-  return {
-    backgroundImage: `url(${prizesGrid})`,
-    backgroundSize: '400% 400%',
-    backgroundPosition: `${(col / 3) * 100}% ${(row / 3) * 100}%`,
-  }
 }
 
 function goHub() {
   sfxClick()
+  spinning.value = false
   view.value = 'hub'
 }
 
 function doSpin() {
   if (tickets.value <= 0 || spinning.value) return
-  spinning.value = true
-  wheelRef.value?.spin()
+  const ok = wheelRef.value?.spin?.()
+  spinning.value = !!ok
+}
+
+function prizeThumb(r) {
+  return { backgroundImage: `url(${r.image || getPrizeIconUrl(r)})`, backgroundSize: 'cover' }
 }
 </script>
 
@@ -89,8 +93,8 @@ function doSpin() {
     <!-- ===== 大厅 ===== -->
     <template v-if="view === 'hub'">
       <div class="step-tag">惊喜游乐园</div>
-      <h2 class="heading">先玩 3 个小游戏</h2>
-      <p class="sub">每完成一个小游戏，就能获得 1 次抽奖机会</p>
+      <h2 class="heading">先玩小游戏，再抽大奖</h2>
+      <p class="sub">完成拼图与默契问答，各获得 1 次抽奖机会</p>
 
       <div class="cards">
         <button
@@ -102,24 +106,37 @@ function doSpin() {
           @click="openGame(g.key)"
         >
           <span class="game-ico" :class="'ico--' + g.key">
-            <svg v-if="g.key === 'catch'" viewBox="0 0 24 24" aria-hidden="true">
+            <svg v-if="g.key === 'puzzle'" viewBox="0 0 24 24" aria-hidden="true">
               <path
-                d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.5L12 17.5l-5.9 3.1 1.2-6.5L2.5 9.5l6.6-.9z"
+                d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm14.5 0a2.5 2.5 0 0 1 0 5H21v2h-3.5a4.5 4.5 0 0 1 0-9H21v2h-3.5z"
                 fill="currentColor"
               />
             </svg>
-            <svg v-else-if="g.key === 'memory'" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="2" y="5" width="15" height="18" rx="2.5" fill="currentColor" opacity="0.85" />
-              <rect x="7" y="1" width="15" height="18" rx="2.5" fill="currentColor" />
-            </svg>
             <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="9" fill="currentColor" />
-              <circle cx="9.5" cy="9" r="2.4" fill="rgba(255,255,255,0.85)" />
+              <path
+                d="M12 3c-1.5 2.5-4 4-7 4 0 5 3 9 7 11 4-2 7-6 7-11-3 0-5.5-1.5-7-4z"
+                fill="currentColor"
+              />
             </svg>
           </span>
           <span class="game-name">{{ g.name }}</span>
-          <span class="game-desc">{{ g.desc }}</span>
           <span class="game-state">{{ done[g.doneKey] ? '已完成 · 已获得抽奖机会' : '去玩' }}</span>
+        </button>
+
+        <button
+          class="game-card card--rain"
+          :class="{ done: rainPlayed }"
+          type="button"
+          @click="openRain"
+        >
+          <span class="game-ico ico--rain">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6" y="4" width="12" height="16" rx="2" fill="currentColor" />
+              <circle cx="12" cy="10" r="2.5" fill="rgba(255,255,255,0.85)" />
+            </svg>
+          </span>
+          <span class="game-name">红包雨</span>
+          <span class="game-state">{{ rainPlayed ? '已体验' : '开抢' }}</span>
         </button>
       </div>
 
@@ -139,37 +156,45 @@ function doSpin() {
 
       <div v-if="results.length" class="won-list">
         <span v-for="(r, i) in results" :key="i" class="won-chip">
-          <i class="won-thumb" :style="prizePos(r)"></i>
+          <i class="won-thumb" :style="prizeThumb(r)"></i>
           {{ r.name }}
         </span>
       </div>
 
-      <div class="bottom-row">
-        <button v-if="allTicketsUsed" class="btn-gold continue-btn" type="button" @click="emit('continue')">
-          继续领取你的生日礼物
-        </button>
-        <button class="btn-ghost skip-btn" type="button" @click="emit('continue')">
-          跳过游戏，直接去领礼物
-        </button>
-      </div>
     </template>
 
-    <!-- ===== 小游戏 ===== -->
-    <template v-else-if="view === 'catch' || view === 'memory' || view === 'pop'">
+    <!-- ===== 回忆拼图 ===== -->
+    <template v-else-if="view === 'puzzle'">
       <div class="game-top">
         <button class="btn-ghost back-btn" type="button" @click="goHub">返回</button>
-        <div class="step-tag">小游戏 · {{ games.find((g) => g.key === view)?.name }}</div>
+        <div class="step-tag">小游戏 · 回忆拼图</div>
       </div>
-      <CatchStarsGame v-if="view === 'catch'" @done="onGameDone('catch')" />
-      <MemoryGame v-else-if="view === 'memory'" @done="onGameDone('memory')" />
-      <PopBubblesGame v-else @done="onGameDone('pop')" />
+      <PuzzleGame @done="onGameDone('puzzle')" />
     </template>
 
-    <!-- ===== 大转盘 ===== -->
+    <!-- ===== 默契问答 ===== -->
+    <template v-else-if="view === 'chem'">
+      <div class="game-top">
+        <button class="btn-ghost back-btn" type="button" @click="goHub">返回</button>
+        <div class="step-tag">小游戏 · 默契问答</div>
+      </div>
+      <ChemistryQuiz @done="onGameDone('chem')" />
+    </template>
+
+    <!-- ===== 红包雨 ===== -->
+    <template v-else-if="view === 'rain'">
+      <div class="game-top">
+        <button class="btn-ghost back-btn" type="button" @click="goHub">返回</button>
+        <div class="step-tag">红包雨</div>
+      </div>
+      <RedPacketRain @done="onRainDone" />
+    </template>
+
+    <!-- ===== 大转盘抽奖 ===== -->
     <template v-else>
       <div class="game-top">
         <button class="btn-ghost back-btn" type="button" @click="goHub">返回</button>
-        <div class="step-tag">幸运大转盘</div>
+        <div class="step-tag">抽奖大转盘</div>
       </div>
 
       <h2 class="heading">转动你的好运气</h2>
@@ -177,9 +202,8 @@ function doSpin() {
 
       <WheelOfFortune
         ref="wheelRef"
-        :prizes="CONFIG.prizes"
-        :grid-url="prizesGrid"
-        :red-url="redEnvelopes"
+        :prizes="remaining"
+        :core-names="unwonCore"
         :tickets="tickets"
         @spun="onSpun"
       />
@@ -190,24 +214,23 @@ function doSpin() {
         :disabled="tickets <= 0 || spinning"
         @click="doSpin"
       >
-        抽奖
+        开始抽奖
       </button>
+
+      <p v-if="tickets <= 0" class="no-ticket-tip">
+        还没有抽奖机会～ 完成「回忆拼图」或「默契问答」即可获得抽奖机会
+      </p>
 
       <transition-group name="chip" tag="div" class="won-list">
         <div v-for="(r, i) in results" :key="i" class="won-card">
-          <i class="won-thumb" :style="prizePos(r)"></i>
-          <div class="won-info">
-            <b>{{ r.name }}</b>
-            <span>{{ r.tag }}</span>
-          </div>
+          <i class="won-thumb" :style="prizeThumb(r)"></i>
+          <b class="won-name-only">{{ r.name }}</b>
         </div>
       </transition-group>
-
-      <button v-if="allTicketsUsed" class="btn-gold continue-btn" type="button" @click="emit('continue')">
-        继续领取你的生日礼物
-      </button>
     </template>
   </section>
+
+
 </template>
 
 <style scoped>
@@ -225,10 +248,14 @@ function doSpin() {
   color: var(--ink-dim);
   letter-spacing: 0.05em;
 }
+.gold-text {
+  color: var(--gold-bright);
+}
 
-/* —— 大厅 —— */
 .cards {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: clamp(12px, 2.2vmin, 24px);
   margin-top: 1vmin;
 }
@@ -237,8 +264,8 @@ function doSpin() {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  width: clamp(150px, 24vmin, 220px);
-  padding: clamp(18px, 3vmin, 30px) clamp(14px, 2.4vmin, 24px);
+  width: clamp(140px, 22vmin, 200px);
+  padding: clamp(16px, 2.8vmin, 28px) clamp(12px, 2.2vmin, 22px);
   border-radius: var(--radius-lg);
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -268,22 +295,53 @@ function doSpin() {
   width: 46%;
   height: 46%;
 }
-.ico--memory {
+.ico--chem {
   background: linear-gradient(180deg, #ffd0e2, #ff9fc4);
   box-shadow: var(--glow-pink);
 }
-.ico--pop {
-  background: linear-gradient(180deg, #d6c4ff, #a88bff);
-  box-shadow: 0 0 20px rgba(168, 139, 255, 0.45);
+.ico--rain {
+  background: linear-gradient(180deg, #ff8fab, #e63946);
+  color: #fff7fb;
+  box-shadow: 0 0 20px rgba(230, 57, 70, 0.45);
+  animation: icoRain 1.6s ease-in-out infinite;
+}
+@keyframes icoRain {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 14px rgba(230, 57, 70, 0.4);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 30px rgba(230, 57, 70, 0.75);
+  }
+}
+.card--rain {
+  border: 2px solid rgba(230, 57, 70, 0.7);
+  background: linear-gradient(180deg, rgba(255, 77, 109, 0.16), rgba(42, 17, 71, 0.5));
+  animation: cardRain 2.4s ease-in-out infinite;
+}
+.card--rain:hover {
+  border-color: rgba(255, 123, 140, 0.95);
+}
+@keyframes cardRain {
+  0%,
+  100% {
+    box-shadow: 0 0 16px rgba(230, 57, 70, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 38px rgba(230, 57, 70, 0.6);
+  }
 }
 .game-name {
-  font-size: clamp(18px, 2.6vmin, 24px);
+  font-size: clamp(17px, 2.5vmin, 22px);
   font-weight: 700;
   letter-spacing: 0.06em;
 }
 .game-desc {
   font-size: clamp(12px, 1.7vmin, 15px);
   color: var(--ink-faint);
+  text-align: center;
 }
 .game-state {
   font-size: clamp(12px, 1.7vmin, 15px);
@@ -291,12 +349,13 @@ function doSpin() {
   letter-spacing: 0.04em;
 }
 
-/* —— 转盘入口 —— */
 .wheel-entry {
   display: flex;
   align-items: center;
   gap: clamp(16px, 3vmin, 30px);
   margin-top: 1vmin;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 .ticket-count {
   font-size: clamp(15px, 2.2vmin, 20px);
@@ -308,28 +367,7 @@ function doSpin() {
   font-size: 1.3em;
   margin: 0 4px;
 }
-.wheel-entry .btn-gold:disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
 
-/* —— 底部 —— */
-.bottom-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-top: 1vmin;
-}
-.continue-btn {
-  margin-top: 1vmin;
-  animation: pulse-soft 2.4s ease-in-out infinite;
-}
-.skip-btn {
-  font-size: clamp(13px, 1.8vmin, 16px);
-}
-
-/* —— 游戏视图 —— */
 .game-top {
   position: absolute;
   top: clamp(14px, 2.6vmin, 28px);
@@ -345,7 +383,6 @@ function doSpin() {
   font-size: clamp(13px, 1.8vmin, 16px);
 }
 
-/* —— 转盘视图 —— */
 .spin-btn {
   margin-top: 0.5vmin;
   padding: 16px 64px;
@@ -355,7 +392,7 @@ function doSpin() {
   pointer-events: none;
 }
 
-/* —— 中奖展示 —— */
+
 .won-list {
   display: flex;
   flex-wrap: wrap;
@@ -381,6 +418,7 @@ function doSpin() {
   border-radius: 50%;
   display: inline-block;
   background-repeat: no-repeat;
+  background-position: center;
 }
 .won-card {
   display: flex;
@@ -391,18 +429,9 @@ function doSpin() {
   background: rgba(38, 24, 84, 0.55);
   border: 1px solid var(--glass-border);
 }
-.won-info {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-.won-info b {
+.won-name-only {
   color: var(--gold-bright);
   font-size: clamp(15px, 2.1vmin, 19px);
-}
-.won-info span {
-  color: var(--ink-faint);
-  font-size: clamp(12px, 1.6vmin, 14px);
 }
 
 .chip-enter-active,

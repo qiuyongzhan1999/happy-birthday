@@ -7,8 +7,9 @@ const emit = defineEmits(['go'])
 
 function onEnter() {
   sfxClick()
-  unlockMusic()
+  // 先切场景，音乐在后台解锁，避免 HEAD/Audio 抢主线程拖慢切换
   emit('go')
+  unlockMusic()
 }
 </script>
 
