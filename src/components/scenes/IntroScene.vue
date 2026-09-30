@@ -1,20 +1,68 @@
 <script setup>
-// 开屏：爱心 + 音乐解锁入口（粉色浪漫梦幻版）
+// 开屏：爱心 + 本页即播 srkl（粉色浪漫梦幻版）
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import MoonMark from '../MoonMark.vue'
-import { unlockMusic, sfxClick } from '../../composables/audio'
+import { unlockMusic, sfxClick, isMusicOn } from '../../composables/audio'
 
 const emit = defineEmits(['go'])
 
-function onEnter() {
+/** 浏览器拦截自动播放时提示点一下（只开音乐，不跳转） */
+const needTapForMusic = ref(false)
+let gestureOnce = null
+
+function clearGestureUnlock() {
+  if (!gestureOnce) return
+  window.removeEventListener('pointerdown', gestureOnce)
+  window.removeEventListener('touchstart', gestureOnce)
+  gestureOnce = null
+}
+
+async function ensureMusic() {
+  if (isMusicOn()) {
+    needTapForMusic.value = false
+    return true
+  }
+  const ok = await unlockMusic()
+  if (ok) {
+    needTapForMusic.value = false
+    clearGestureUnlock()
+  }
+  return ok
+}
+
+function armUnlockOnGesture() {
+  if (gestureOnce || isMusicOn()) return
+  needTapForMusic.value = true
+  gestureOnce = () => {
+    ensureMusic()
+  }
+  window.addEventListener('pointerdown', gestureOnce, { passive: true })
+  window.addEventListener('touchstart', gestureOnce, { passive: true })
+}
+
+onMounted(async () => {
+  const ok = await ensureMusic()
+  if (!ok) armUnlockOnGesture()
+})
+
+onBeforeUnmount(clearGestureUnlock)
+
+/** 点空白处：音乐未开则只开音乐，留在开屏页 */
+async function onSceneTap() {
+  if (!isMusicOn()) await ensureMusic()
+}
+
+/** 领取礼物：确保音乐在播后再进入 */
+async function onEnter() {
+  clearGestureUnlock()
+  await ensureMusic()
   sfxClick()
-  // 先切场景，音乐在后台解锁，避免 HEAD/Audio 抢主线程拖慢切换
   emit('go')
-  unlockMusic()
 }
 </script>
 
 <template>
-  <section class="scene active intro-scene" @click="onEnter">
+  <section class="scene active intro-scene" @click="onSceneTap">
     <!-- 背景光晕：粉色双色缓慢漂移 -->
     <div class="aurora aurora--a"></div>
     <div class="aurora aurora--b"></div>
@@ -34,7 +82,6 @@ function onEnter() {
 
     <h1 class="title gold-text">生日快乐</h1>
     <p class="sub">今天是你专属的日子，一场甜蜜惊喜已经备好</p>
-
     <div class="claim-wrap">
       <button class="claim-btn" type="button" aria-label="领取你的生日礼物" @click.stop="onEnter">
         <span class="claim-glow"></span>
@@ -294,6 +341,17 @@ function onEnter() {
   }
 }
 
+.music-hint {
+  position: relative;
+  z-index: 1;
+  margin-top: 1.2vmin;
+  font-size: clamp(13px, 2vmin, 16px);
+  letter-spacing: 0.16em;
+  color: #ffeaf3;
+  text-shadow: 0 0 14px rgba(255, 123, 172, 0.7);
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
 .hint-wrap,
 .claim-wrap {
   position: relative;
@@ -302,7 +360,6 @@ function onEnter() {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  margin-top: 3.4vmin;
 }
 
 /* ---------- 领取按钮：粉色渐变 + 辉光呼吸 ---------- */

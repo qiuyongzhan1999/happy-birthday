@@ -2,7 +2,7 @@
 // 红包雨：Canvas + rAF，点击领取，炸弹 -1，30 秒结算
 import { inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CONFIG } from '../../config'
-import { sfxBomb, sfxClick, sfxRedHit, sfxRedResult } from '../../composables/audio'
+import { sfxBomb, sfxClick, sfxRedHit, sfxRedResult, startRedRainMusic, stopRedRainMusic } from '../../composables/audio'
 
 const emit = defineEmits(['done'])
 const confetti = inject('confetti', null)
@@ -201,6 +201,8 @@ function settle() {
 
 async function start() {
   sfxClick()
+  // 用户手势时再确保红包雨音乐在播（防自动播放被拦）
+  startRedRainMusic()
   phase.value = 'play'
   caught.value = 0
   left.value = DURATION
@@ -229,12 +231,15 @@ function finish() {
 onMounted(() => {
   resize()
   window.addEventListener('resize', resize)
+  // 进入红包雨页即切到 hbyu（含准备/抢红包/结算全程）
+  startRedRainMusic()
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   clearInterval(countdownTimer)
   window.removeEventListener('resize', resize)
+  stopRedRainMusic()
 })
 </script>
 

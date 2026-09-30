@@ -1,34 +1,32 @@
 /**
  * 音乐与音效系统
- * 播放策略：CONFIG.musicUrl → /music/happy-birthday.m4a → Web Audio 合成《生日快乐歌》兜底
- * 浏览器要求用户交互后才能出声，因此在开屏点击时调用 unlock()
+ * 背景音乐：src/assets/music/srkl.mp3（循环）
+ * 红包雨：src/assets/music/hbyu.mp3（进入红包雨页即播）
+ * 浏览器可能拦截自动播放：首页挂载时尝试播放，失败则等用户首次交互再播
  */
-import { CONFIG } from '../config'
-
-const base = import.meta.env.BASE_URL || '/'
+import bgmUrl from '../assets/music/srkl.mp3'
+import lankouUrl from '../assets/music/lankou.mp3'
+import huangjinUrl from '../assets/music/huangjin.mp3'
+import hbyuUrl from '../assets/music/hbyu.mp3'
+import choujiangUrl from '../assets/music/choujiang.mp3'
 
 let ctx = null
 let master = null
 let musicOn = false
 let audioEl = null
-let synthTimer = null
-let useSynth = false
-let resolveQueue = null
+let announceEl = null
+let rainEl = null
+let rainOn = false
+let bgMusicPausedForRain = false
+let tenseEl = null
+let tenseOn = false
+let bgMusicPausedForTense = false
 
-/* ---------- 合成旋律定义（生日快乐歌，G 大调） ---------- */
-const N = {
-  G4: 392.0, A4: 440.0, B4: 493.88, C5: 523.25, D5: 587.33,
-  E5: 659.25, F5: 698.46, G5: 783.99,
+/** 中奖播报：奖品名 → 音频 */
+const PRIZE_ANNOUNCE = {
+  '兰蔻超修小黑瓶精华': lankouUrl,
+  '老庙黄金项链': huangjinUrl,
 }
-const BEAT = 0.42 // 每拍秒数
-
-// [音符, 拍数]
-const MELODY = [
-  ['G4', 0.75], ['G4', 0.25], ['A4', 1], ['G4', 1], ['C5', 1], ['B4', 2],
-  ['G4', 0.75], ['G4', 0.25], ['A4', 1], ['G4', 1], ['D5', 1], ['C5', 2],
-  ['G4', 0.75], ['G4', 0.25], ['G5', 1], ['E5', 1], ['C5', 1], ['B4', 1], ['A4', 2],
-  ['F5', 0.75], ['F5', 0.25], ['E5', 1], ['C5', 1], ['D5', 1], ['C5', 2],
-]
 
 /* ---------- 内部工具 ---------- */
 function ensureCtx() {
@@ -70,128 +68,156 @@ function playBell(freq, start, dur, vol) {
   playTone(freq * 1.5, start, dur * 0.6, vol * 0.12, 'sine', g)
 }
 
-/* ---------- 合成音乐：多编曲变奏，播完自动切下一首（避免单曲死循环的重复感） ---------- */
-// 三种不同听感的变奏：八音盒 / 抒情钢琴 / 欢快派对
-const VARIANTS = [
-  { beat: 0.42, mode: 'bell', bass: false, sparkle: false, vol: 0.09 }, // 八音盒（原版）
-  { beat: 0.6, mode: 'soft', bass: true, sparkle: false, vol: 0.12 }, // 抒情钢琴
-]
-// G 大调四句和声根音：G / C / G / F#
-const BASS_ROOTS = [98.0, 130.81, 98.0, 92.5]
-
-function scheduleSynthOnce(variant, onDone) {
-  if (!ctx || !musicOn) return
-  const { beat, mode, bass, sparkle, vol } = variant
-  let t = ctx.currentTime + 0.15
-  MELODY.forEach(([name, beats], i) => {
-    const dur = beats * beat * 0.95
-    if (mode === 'bell') {
-      playBell(N[name], t, dur, vol)
-    } else {
-      // 抒情钢琴：三角波主音 + 低八度润色 + 长延音
-      playTone(N[name], t, dur * 1.35, vol, 'triangle')
-      playTone(N[name] / 2, t, dur * 1.45, vol * 0.35, 'sine')
-    }
-    if (bass) {
-      const root = BASS_ROOTS[Math.floor(i / 6) % 4]
-      playTone(root, t, dur, vol * 0.9, 'sine')
-      playTone(root * 2, t, dur, vol * 0.25, 'triangle')
-    }
-    if (sparkle && i % 2 === 0) {
-      playTone(N[name] * 2, t + dur * 0.5, dur * 0.5, vol * 0.3, 'triangle')
-    }
-    t += beats * beat
-  })
-  const loopLen = (t - ctx.currentTime) * 1000
-  synthTimer = setTimeout(onDone, loopLen + 900)
-}
-
-function stopSynth() {
-  if (synthTimer) {
-    clearTimeout(synthTimer)
-    synthTimer = null
-  }
-}
-
-let trackIdx = 0 // 0 = 文件音乐；1..3 = 合成变奏
-
-function playFileMusic() {
-  if (!musicOn) return
-  if (!audioEl) {
-    playNextSynth()
-    return
-  }
-  useSynth = false
-  audioEl.currentTime = 0
-  audioEl.play().catch(() => playNextSynth())
-}
-
-function playNextSynth() {
-  if (!musicOn) return
-  useSynth = true
-  trackIdx = (trackIdx % VARIANTS.length) + 1
-  scheduleSynthOnce(VARIANTS[trackIdx - 1], () => {
-    if (!musicOn) return
-    // 变奏播完：切回文件音乐；文件不可用时继续下一个变奏
-    if (audioEl) playFileMusic()
-    else playNextSynth()
-  })
-}
-
 /* ---------- 音乐控制 ---------- */
-async function resolveMusicUrl() {
-  if (CONFIG.musicUrl) return CONFIG.musicUrl
-  try {
-    const resp = await fetch(`${base}music/happy-birthday.m4a`, { method: 'HEAD' })
-    if (resp.ok) return `${base}music/happy-birthday.m4a`
-  } catch (e) {
-    /* 忽略 */
-  }
-  return null
-}
-
 /**
  * 用户首次交互时调用：解锁音频并开始播放
  */
 export async function unlockMusic() {
   const c = ensureCtx()
   if (!c) return false
-  if (musicOn) return true
-  musicOn = true
+  if (musicOn && audioEl && !audioEl.paused) return true
 
-  const url = await resolveMusicUrl()
-  if (url) {
-    try {
-      audioEl = new Audio(url)
-      audioEl.loop = false
+  try {
+    if (!audioEl) {
+      audioEl = new Audio(bgmUrl)
+      audioEl.loop = true
+      audioEl.preload = 'auto'
       audioEl.volume = 0.55
-      // 文件音乐播完 → 切合成变奏（多曲轮播）
-      audioEl.addEventListener('ended', () => {
-        if (musicOn) playNextSynth()
-      })
-      await audioEl.play()
-      useSynth = false
-      return true
-    } catch (e) {
-      audioEl = null
+      // iOS / 微信内置浏览器
+      audioEl.playsInline = true
+      audioEl.setAttribute('playsinline', 'true')
+      audioEl.setAttribute('webkit-playsinline', 'true')
     }
+    await audioEl.play()
+    musicOn = true
+    return true
+  } catch (e) {
+    musicOn = false
+    return false
   }
-  // 兜底：合成变奏轮播
-  playNextSynth()
-  return true
 }
 
 export function stopMusic() {
   musicOn = false
+  rainOn = false
+  tenseOn = false
+  bgMusicPausedForRain = false
+  bgMusicPausedForTense = false
+  if (announceEl) {
+    announceEl.pause()
+    announceEl = null
+  }
+  if (rainEl) {
+    rainEl.pause()
+    rainEl = null
+  }
+  if (tenseEl) {
+    tenseEl.pause()
+    tenseEl = null
+  }
   if (audioEl) {
     audioEl.pause()
     audioEl = null
   }
-  stopSynth()
+}
+
+/**
+ * 核心奖品中奖播报。会暂时暂停抽奖曲/主 BGM，播完后优先恢复抽奖曲。
+ * @returns {boolean} 是否有对应播报
+ */
+export function playPrizeAnnounce(prizeName) {
+  const url = PRIZE_ANNOUNCE[prizeName]
+  if (!url) return false
+  ensureCtx()
+
+  if (announceEl) {
+    announceEl.pause()
+    announceEl = null
+  }
+  if (tenseEl && !tenseEl.paused) {
+    tenseEl.pause()
+  }
+  if (audioEl && !audioEl.paused) {
+    audioEl.pause()
+  }
+
+  const resumeAfter = () => {
+    if (tenseOn && tenseEl) {
+      tenseEl.play().catch(() => {})
+      return
+    }
+    resumeBgMusic()
+  }
+
+  announceEl = new Audio(url)
+  announceEl.volume = 0.9
+  announceEl.addEventListener('ended', () => {
+    announceEl = null
+    resumeAfter()
+  })
+  announceEl.play().catch(() => {
+    announceEl = null
+    resumeAfter()
+  })
+  return true
+}
+
+export function resumeBgMusic() {
+  if (musicOn && audioEl && !tenseOn && !rainOn) {
+    audioEl.play().catch(() => {})
+  }
 }
 
 export function isMusicOn() {
   return musicOn
+}
+
+/** 进入红包雨：暂停主 BGM，循环播放 hbyu.mp3 */
+export function startRedRainMusic() {
+  ensureCtx()
+
+  if (rainOn && rainEl) {
+    if (rainEl.paused) rainEl.play().catch(() => {})
+    return
+  }
+  rainOn = true
+
+  if (announceEl) {
+    announceEl.pause()
+    announceEl = null
+  }
+  if (audioEl && !audioEl.paused) {
+    audioEl.pause()
+    bgMusicPausedForRain = true
+  }
+
+  try {
+    rainEl = new Audio(hbyuUrl)
+    rainEl.loop = true
+    rainEl.preload = 'auto'
+    rainEl.volume = 0.6
+    rainEl.playsInline = true
+    rainEl.setAttribute('playsinline', 'true')
+    rainEl.setAttribute('webkit-playsinline', 'true')
+    rainEl.play().catch(() => {})
+  } catch (e) {
+    /* 忽略 */
+  }
+}
+
+/** 离开红包雨：停 hbyu，恢复主 BGM */
+export function stopRedRainMusic({ resume = true } = {}) {
+  rainOn = false
+  if (rainEl) {
+    rainEl.pause()
+    rainEl = null
+  }
+  if (resume && bgMusicPausedForRain && musicOn && audioEl && !tenseOn) {
+    bgMusicPausedForRain = false
+    audioEl.play().catch(() => {})
+  } else {
+    bgMusicPausedForRain = false
+  }
 }
 
 /* ---------- 音效 ---------- */
@@ -264,85 +290,53 @@ export function sfxWin() {
   })
 }
 
-/* ---------- 抽奖紧张刺激 BGM（Web Audio 合成） ---------- */
-let tenseOn = false
-let tenseTimer = null
-let bgMusicPausedForTense = false
+/* ---------- 抽奖 BGM：choujiang.mp3 ---------- */
 
-// 钢琴音色：三角波基音 + 泛音叠加，短促衰减
-function pianoNote(freq, start, dur, vol) {
-  playTone(freq, start, dur, vol, 'triangle')
-  playTone(freq * 2, start, dur * 0.6, vol * 0.22, 'sine')
-  playTone(freq * 3, start, dur * 0.4, vol * 0.08, 'sine')
-}
-
-function scheduleTenseLoop() {
-  if (!ctx || !tenseOn) return
-  // 浪漫钢琴小品（C 大调）：琶音伴奏 + 主旋律 + 低音进行，循环约 6.5s
-  const sp = 0.1425 // 16分音符时长
-  let t = ctx.currentTime + 0.1
-  // 低音进行：C3 G2 A2 F2（每 8 个 16 分换）
-  const bassProg = [130.81, 98.0, 110.0, 87.31]
-  // 琶音：C5-E5-G5-C6
-  const arp = [523.25, 659.25, 783.99, 1046.5]
-  // 旋律：[频率, 16分长度]
-  const MEL = [
-    [659.25, 1], [783.99, 1], [659.25, 2], [587.33, 2], [659.25, 2], [523.25, 4],
-    [587.33, 1], [659.25, 1], [783.99, 2], [880.0, 2], [783.99, 4],
-    [659.25, 1], [783.99, 1], [880.0, 2], [987.77, 2], [880.0, 4],
-    [783.99, 2], [659.25, 2], [587.33, 4],
-  ]
-  let i = 0
-  while (i < MEL.length) {
-    const [f, len] = MEL[i]
-    if (f) pianoNote(f, t, len * sp * 1.15, 0.09)
-    if (i % 4 === 0) {
-      arp.forEach((af, k) => pianoNote(af, t + k * sp, sp * 1.6, 0.04))
-    }
-    if (i % 8 === 0) {
-      const root = bassProg[(i / 8) | 0] || bassProg[0]
-      playTone(root, t, sp * 6, 0.1, 'sine')
-      playTone(root * 2, t, sp * 6, 0.035, 'triangle')
-    }
-    t += len * sp
-    i += 1
-  }
-  const loopLen = (t - ctx.currentTime) * 1000
-  tenseTimer = setTimeout(scheduleTenseLoop, loopLen + 1500)
-}
-
-/** 抽奖开始：暂停背景生日快乐歌，播放紧张循环 */
+/** 抽奖开始：暂停背景音乐，循环播放 choujiang.mp3 */
 export function startTenseMusic() {
   ensureCtx()
-  if (!ctx) return
-  if (tenseOn) return
+
+  if (tenseOn && tenseEl) {
+    if (tenseEl.paused) tenseEl.play().catch(() => {})
+    return
+  }
   tenseOn = true
+
+  if (announceEl) {
+    announceEl.pause()
+    announceEl = null
+  }
   if (audioEl && !audioEl.paused) {
     audioEl.pause()
     bgMusicPausedForTense = true
-  } else if (useSynth && musicOn) {
-    stopSynth()
-    bgMusicPausedForTense = true
   }
-  scheduleTenseLoop()
+
+  try {
+    tenseEl = new Audio(choujiangUrl)
+    tenseEl.loop = true
+    tenseEl.preload = 'auto'
+    tenseEl.volume = 0.65
+    tenseEl.playsInline = true
+    tenseEl.setAttribute('playsinline', 'true')
+    tenseEl.setAttribute('webkit-playsinline', 'true')
+    tenseEl.play().catch(() => {})
+  } catch (e) {
+    /* 忽略 */
+  }
 }
 
-/** 抽奖结束：停紧张曲，恢复背景音乐 */
-export function stopTenseMusic() {
+/** 抽奖结束：停抽奖曲；默认恢复背景音乐 */
+export function stopTenseMusic({ resume = true } = {}) {
   tenseOn = false
-  if (tenseTimer) {
-    clearTimeout(tenseTimer)
-    tenseTimer = null
+  if (tenseEl) {
+    tenseEl.pause()
+    tenseEl = null
   }
-  if (bgMusicPausedForTense && musicOn) {
+  if (resume && bgMusicPausedForTense && musicOn && audioEl && !rainOn) {
     bgMusicPausedForTense = false
-    if (audioEl && !audioEl.ended) {
-      audioEl.play().catch(() => {})
-    } else if (audioEl) {
-      playFileMusic()
-    } else {
-      playNextSynth()
-    }
+    audioEl.play().catch(() => {})
+  } else {
+    bgMusicPausedForTense = false
   }
 }
 

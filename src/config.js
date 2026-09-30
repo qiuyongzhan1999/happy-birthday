@@ -30,7 +30,6 @@ export const CONFIG = {
   name: '桐桐',
   date: todayText(),
   photoUrl: '',
-  musicUrl: '',
 
   // 默契问答（游乐园）
   chemistryQuiz: {

@@ -1,13 +1,13 @@
 <script setup>
 // 惊喜游乐园：回忆拼图 + 默契问答 → 抽奖机会；红包雨独立；大转盘抽奖
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { CONFIG } from '../../config'
 import { getPrizeIconUrl } from '../../composables/prizeIcons'
 import PuzzleGame from '../games/PuzzleGame.vue'
 import ChemistryQuiz from '../games/ChemistryQuiz.vue'
 import RedPacketRain from '../games/RedPacketRain.vue'
 import WheelOfFortune from '../WheelOfFortune.vue'
-import { sfxClick, sfxDigit } from '../../composables/audio'
+import { sfxClick, sfxDigit, startTenseMusic, stopTenseMusic } from '../../composables/audio'
 
 const view = ref('hub') // hub | puzzle | chem | rain | wheel
 const done = ref({ puzzle: false, chem: false })
@@ -16,6 +16,12 @@ const results = ref([])
 const spinning = ref(false)
 const wheelRef = ref(null)
 const rainPlayed = ref(false)
+
+/** 中奖弹窗由大厅持有：仅手动点 ✕ 关闭，避免转盘重绘/事件冒泡把弹窗拆掉 */
+const wonPrize = ref(null)
+const wonIcon = ref('')
+let closeArmed = false
+let closeArmTimer = 0
 
 const games = [
   { key: 'puzzle', name: '回忆拼图', doneKey: 'puzzle' },
@@ -51,15 +57,20 @@ function onRainDone() {
 function openWheel() {
   sfxClick()
   view.value = 'wheel'
+  // 一进抽奖页就播 choujiang
+  startTenseMusic()
 }
 
 // 转盘展示全部奖品扇区；核心奖品（兰蔻小黑瓶 / 老庙黄金项链）固定必中：
 // 第 1 次抽奖在两者中随机，抽中后移出候选，第 2 次必中另一个
+// 布局：两个核心奖品错开约半圈，避免挨在一起
 const CORE_NAMES = ['兰蔻超修小黑瓶精华', '老庙黄金项链']
-const wheelPrizes = [
-  ...CONFIG.prizes.filter((p) => !CORE_NAMES.includes(p.name)),
-  ...CONFIG.prizes.filter((p) => CORE_NAMES.includes(p.name)),
-]
+const wheelPrizes = (() => {
+  const cores = CONFIG.prizes.filter((p) => CORE_NAMES.includes(p.name))
+  const others = CONFIG.prizes.filter((p) => !CORE_NAMES.includes(p.name))
+  const mid = Math.ceil(others.length / 2)
+  return [...others.slice(0, mid), cores[0], ...others.slice(mid), cores[1]].filter(Boolean)
+})()
 const remaining = ref(wheelPrizes)
 const wonCore = ref([])
 const unwonCore = computed(() => CORE_NAMES.filter((n) => !wonCore.value.includes(n)))
@@ -69,16 +80,36 @@ function onSpun(prize) {
   results.value = [prize, ...results.value]
   if (CORE_NAMES.includes(prize.name)) wonCore.value.push(prize.name)
   spinning.value = false
+
+  wonPrize.value = prize
+  wonIcon.value = prize.image || getPrizeIconUrl(prize)
+  closeArmed = false
+  if (closeArmTimer) clearTimeout(closeArmTimer)
+  // 短时锁定关闭，避免弹窗出现瞬间的残留点击/误触把弹窗关掉
+  closeArmTimer = window.setTimeout(() => {
+    closeArmed = true
+    closeArmTimer = 0
+  }, 700)
+}
+
+function closePrizeResult() {
+  if (!closeArmed || !wonPrize.value) return
+  sfxClick()
+  wonPrize.value = null
+  wonIcon.value = ''
 }
 
 function goHub() {
   sfxClick()
   spinning.value = false
+  if (view.value === 'wheel') {
+    stopTenseMusic({ resume: true })
+  }
   view.value = 'hub'
 }
 
 function doSpin() {
-  if (tickets.value <= 0 || spinning.value) return
+  if (tickets.value <= 0 || spinning.value || wonPrize.value) return
   const ok = wheelRef.value?.spin?.()
   spinning.value = !!ok
 }
@@ -86,6 +117,10 @@ function doSpin() {
 function prizeThumb(r) {
   return { backgroundImage: `url(${r.image || getPrizeIconUrl(r)})`, backgroundSize: 'cover' }
 }
+
+onBeforeUnmount(() => {
+  if (closeArmTimer) clearTimeout(closeArmTimer)
+})
 </script>
 
 <template>
@@ -154,13 +189,6 @@ function prizeThumb(r) {
         </button>
       </div>
 
-      <div v-if="results.length" class="won-list">
-        <span v-for="(r, i) in results" :key="i" class="won-chip">
-          <i class="won-thumb" :style="prizeThumb(r)"></i>
-          {{ r.name }}
-        </span>
-      </div>
-
     </template>
 
     <!-- ===== 回忆拼图 ===== -->
@@ -211,7 +239,7 @@ function prizeThumb(r) {
       <button
         class="btn-gold spin-btn"
         type="button"
-        :disabled="tickets <= 0 || spinning"
+        :disabled="tickets <= 0 || spinning || !!wonPrize"
         @click="doSpin"
       >
         开始抽奖
@@ -220,14 +248,34 @@ function prizeThumb(r) {
       <p v-if="tickets <= 0" class="no-ticket-tip">
         还没有抽奖机会～ 完成「回忆拼图」或「默契问答」即可获得抽奖机会
       </p>
-
-      <transition-group name="chip" tag="div" class="won-list">
-        <div v-for="(r, i) in results" :key="i" class="won-card">
-          <i class="won-thumb" :style="prizeThumb(r)"></i>
-          <b class="won-name-only">{{ r.name }}</b>
-        </div>
-      </transition-group>
+ 
     </template>
+
+    <!-- 中奖全屏：挂在大厅层，仅 ✕ 可关 -->
+    <Teleport to="body">
+      <transition name="prize-pop">
+        <div
+          v-if="wonPrize"
+          class="prize-overlay"
+          @click.stop
+          @pointerdown.stop
+        >
+          <div class="prize-panel">
+            <button
+              class="prize-close"
+              type="button"
+              aria-label="关闭"
+              @click.stop="closePrizeResult"
+            >
+              ✕
+            </button>
+            <p class="prize-label">恭喜获得</p>
+            <div class="prize-icon" :style="{ backgroundImage: `url(${wonIcon})` }"></div>
+            <h3 class="prize-name">{{ wonPrize.name }}</h3>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
   </section>
 
 
@@ -442,5 +490,91 @@ function prizeThumb(r) {
 .chip-leave-to {
   opacity: 0;
   transform: translateY(10px) scale(0.9);
+}
+</style>
+
+<!-- Teleport 到 body：用非 scoped 保证弹层样式一定生效 -->
+<style>
+.prize-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 8, 32, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.prize-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: min(86vw, 380px);
+  padding: clamp(36px, 5vmin, 48px) clamp(28px, 4vmin, 40px);
+  border-radius: 28px;
+  background: linear-gradient(165deg, rgba(99, 34, 92, 0.95), rgba(42, 17, 71, 0.96));
+  border: 1px solid rgba(255, 190, 218, 0.45);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(255, 123, 172, 0.35);
+}
+.prize-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 190, 218, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffeaf3;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.prize-close:active {
+  transform: scale(0.92);
+}
+.prize-close:hover {
+  background: rgba(255, 123, 172, 0.35);
+}
+.prize-label {
+  font-size: clamp(14px, 2vmin, 17px);
+  letter-spacing: 0.28em;
+  color: var(--gold);
+}
+.prize-icon {
+  width: min(52vw, 220px);
+  height: min(52vw, 220px);
+  border-radius: 28px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 24px rgba(255, 150, 190, 0.4);
+}
+.prize-name {
+  font-size: clamp(28px, 5vmin, 40px);
+  font-weight: 800;
+  color: var(--gold-bright);
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+.prize-pop-enter-active,
+.prize-pop-leave-active {
+  transition: opacity 0.28s ease;
+}
+.prize-pop-enter-active .prize-panel,
+.prize-pop-leave-active .prize-panel {
+  transition: transform 0.32s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.28s ease;
+}
+.prize-pop-enter-from,
+.prize-pop-leave-to {
+  opacity: 0;
+}
+.prize-pop-enter-from .prize-panel,
+.prize-pop-leave-to .prize-panel {
+  opacity: 0;
+  transform: scale(0.82);
 }
 </style>

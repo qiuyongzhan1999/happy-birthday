@@ -1,11 +1,12 @@
 <script setup>
-// 幸运大转盘：扇区 + 奖品图，缓动停转；中奖全屏居中，仅 ❌ 可关
+// 幸运大转盘：两段式停转（高速 → 悬疑爬行 → 轻晃落定），揭晓前闪烁再弹窗
 import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getPrizeIconUrl } from '../composables/prizeIcons'
 import {
   sfxClick,
   sfxConfetti,
   sfxWin,
+  playPrizeAnnounce,
   startTenseMusic,
   stopTenseMusic,
 } from '../composables/audio'
@@ -21,29 +22,65 @@ const confetti = inject('confetti', null)
 
 const canvasRef = ref(null)
 const spinning = ref(false)
-const showResult = ref(false)
-const wonPrize = ref(null)
-const wonIcon = ref('')
+/** idle | rush | crawl | settle | reveal */
+const phase = ref('idle')
 
 const COLORS = ['#ffe0ec', '#ffb3c9', '#f6d188', '#ffc4e0', '#e8b4f0', '#ffd6a8']
-const SPIN_MS = 4700
+/** 主旋转：先猛冲再长尾减速（合计约 20 秒） */
+const RUSH_MS = 16000
+const RUSH_EASE = 'cubic-bezier(0.08, 0.72, 0.02, 1)'
+/** 悬疑爬行：擦边后慢慢挪到正中 */
+const CRAWL_MS = 3000
+const CRAWL_EASE = 'cubic-bezier(0.22, 0.08, 0.18, 1)'
+/** 落定后闪烁再揭晓 */
+const REVEAL_HOLD_MS = 900
+const RUSH_PAUSE_MS = 400
+const SETTLE_MS = 600
 
 let ctx = null
 let D = 0
 let dpr = 1
 let rotate = 0
 let highlightIdx = -1
-let spinRaf = 0
+let spinTimer = 0
+let phaseTimer = 0
+let onSpinEnd = null
 const iconImgs = []
 
-function applyRotate(deg) {
-  rotate = deg
-  const el = canvasRef.value
-  if (el) el.style.transform = `rotate(${deg}deg)`
+const PHASE_HINT = {
+  idle: '',
+  rush: '命运齿轮正在加速…',
+  crawl: '慢下来了…会是它吗？',
+  settle: '指针锁定中…',
+  reveal: '好运揭晓！',
 }
 
-function easeOutCubic(t) {
-  return 1 - (1 - t) ** 3
+function applyRotate(deg, { duration = 0, ease = 'linear' } = {}) {
+  rotate = deg
+  const el = canvasRef.value
+  if (!el) return
+  if (duration > 0) {
+    el.style.transition = `transform ${duration}ms ${ease}`
+  } else {
+    el.style.transition = 'none'
+  }
+  el.style.transform = `rotate(${deg}deg) translateZ(0)`
+}
+
+function clearSpinListeners() {
+  if (spinTimer) {
+    clearTimeout(spinTimer)
+    spinTimer = 0
+  }
+  if (phaseTimer) {
+    clearTimeout(phaseTimer)
+    phaseTimer = 0
+  }
+  const el = canvasRef.value
+  if (el && onSpinEnd) {
+    el.removeEventListener('transitionend', onSpinEnd)
+    onSpinEnd = null
+  }
 }
 
 function sectorAngle() {
@@ -67,7 +104,7 @@ function loadIcons() {
   props.prizes.forEach((p, i) => {
     const img = new Image()
     img.onload = () => draw()
-    img.src = p.image || getPrizeIconUrl(p)  // 优先真实商品图（本地资源），无图再回退插画
+    img.src = p.image || getPrizeIconUrl(p)
     iconImgs[i] = img
   })
 }
@@ -87,7 +124,7 @@ function drawSector(i, color) {
   ctx.stroke()
   if (i === highlightIdx) {
     ctx.strokeStyle = '#ffe6a8'
-    ctx.lineWidth = 4
+    ctx.lineWidth = 5
     ctx.stroke()
   }
 }
@@ -120,12 +157,9 @@ function drawPrize(i) {
   ctx.strokeStyle = 'rgba(255,255,255,0.55)'
   ctx.lineWidth = 1.5
   ctx.stroke()
-
 }
 
-
 function drawHub() {
-  // 外圈装饰
   ctx.beginPath()
   ctx.arc(D / 2, D / 2, D / 2 - 3, 0, Math.PI * 2)
   const ring = ctx.createLinearGradient(0, 0, D, D)
@@ -136,7 +170,6 @@ function drawHub() {
   ctx.lineWidth = 10
   ctx.stroke()
 
-  // 中心圆
   const grad = ctx.createLinearGradient(0, D / 2 - D * 0.12, 0, D / 2 + D * 0.12)
   grad.addColorStop(0, '#ffe6a8')
   grad.addColorStop(1, '#d9a441')
@@ -155,7 +188,7 @@ function drawHub() {
   ctx.font = `800 ${D * 0.045}px "PingFang SC","Microsoft YaHei",sans-serif`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText('抽奖', D / 2, D / 2)
+  ctx.fillText(spinning.value ? '…' : '抽奖', D / 2, D / 2)
 }
 
 function draw() {
@@ -170,74 +203,139 @@ function draw() {
   drawHub()
 }
 
-function spin() {
-  if (spinning.value || props.tickets <= 0 || showResult.value) return false
-  if (!props.prizes.length) return false
-  sfxClick()
-  spinning.value = true
-  highlightIdx = -1
-  draw()
-  startTenseMusic()
-
+function pickIndex() {
   const n = props.prizes.length
-  const step = sectorAngle()
-  // 核心奖品固定必中：只从 coreNames 对应扇区随机；未传 coreNames 时全池随机
-  let idx
   const coreIdx = []
   props.prizes.forEach((p, i) => {
     if (props.coreNames.includes(p.name)) coreIdx.push(i)
   })
   if (coreIdx.length) {
-    idx = coreIdx[(Math.random() * coreIdx.length) | 0]
-  } else {
-    idx = (Math.random() * n) | 0
+    return coreIdx[(Math.random() * coreIdx.length) | 0]
   }
-  // 扇区中心对准顶部指针（-90° 为顶部）
+  return (Math.random() * n) | 0
+}
+
+function revealPrize(idx) {
+  if (!spinning.value) return
+  clearSpinListeners()
+  applyRotate(rotate)
+  phase.value = 'reveal'
+  highlightIdx = idx
+  draw()
+
+  const prize = props.prizes[idx]
+
+  const announced = (() => {
+    // 中奖播报时短暂让出，不离开抽奖页；播完继续 choujiang
+    if (playPrizeAnnounce(prize.name)) return true
+    return false
+  })()
+  sfxConfetti()
+  if (!announced) sfxWin()
+  confetti?.burst?.(window.innerWidth / 2, window.innerHeight * 0.4, 100)
+  confetti?.fireworks?.(2200)
+
+  // 短暂停顿闪烁，再通知父级弹出结果（弹窗由父级持有，避免本组件重绘时被拆掉）
+  let blinks = 0
+  const blink = () => {
+    highlightIdx = blinks % 2 === 0 ? idx : -1
+    draw()
+    blinks += 1
+    if (blinks < 6) {
+      phaseTimer = window.setTimeout(blink, 120)
+      return
+    }
+    highlightIdx = idx
+    draw()
+    spinning.value = false
+    phase.value = 'idle'
+    emit('spun', prize)
+  }
+  phaseTimer = window.setTimeout(blink, REVEAL_HOLD_MS * 0.35)
+}
+
+function waitTransition(el, duration) {
+  return new Promise((resolve) => {
+    let done = false
+    const finish = () => {
+      if (done) return
+      done = true
+      if (onSpinEnd && el) el.removeEventListener('transitionend', onSpinEnd)
+      onSpinEnd = null
+      if (spinTimer) {
+        clearTimeout(spinTimer)
+        spinTimer = 0
+      }
+      resolve()
+    }
+    onSpinEnd = (e) => {
+      if (e.target !== el || e.propertyName !== 'transform') return
+      finish()
+    }
+    el?.addEventListener('transitionend', onSpinEnd)
+    spinTimer = window.setTimeout(finish, duration + 100)
+  })
+}
+
+async function runSpinSequence(idx) {
+  const el = canvasRef.value
+  const step = sectorAngle()
+  // 扇区中心对准顶部指针
   const target = (360 - (idx * step + step / 2) + 360) % 360
-  const spins = 5 + ((Math.random() * 3) | 0)
+  const spins = 8 + ((Math.random() * 3) | 0)
   const from = rotate
   const current = ((from % 360) + 360) % 360
   const delta = (target - current + 360) % 360
-  const to = from + spins * 360 + delta
+  const finalDeg = from + spins * 360 + delta
 
-  if (spinRaf) cancelAnimationFrame(spinRaf)
+  // 擦边悬疑：只欠一点角度（绝不冲过再回退），再继续往前爬到正中
+  const missFrac = 0.38 + Math.random() * 0.28 // 约 0.4～0.66 扇区
+  const teaseDeg = finalDeg - step * missFrac
 
-  const t0 = performance.now()
-  const tick = (now) => {
-    const p = Math.min(1, (now - t0) / SPIN_MS)
-    applyRotate(from + (to - from) * easeOutCubic(p))
-    if (p < 1) {
-      spinRaf = requestAnimationFrame(tick)
-      return
-    }
-    spinRaf = 0
-    applyRotate(to)
-    spinning.value = false
-    highlightIdx = idx
-    draw()
-    stopTenseMusic()
-    sfxConfetti()
-    sfxWin()
-    confetti?.burst?.(window.innerWidth / 2, window.innerHeight * 0.4, 100)
-    confetti?.fireworks?.(2200)
+  clearSpinListeners()
+  applyRotate(from)
+  if (el) void el.offsetWidth
 
-    const prize = props.prizes[idx]
-    wonPrize.value = prize
-    wonIcon.value = prize.image || getPrizeIconUrl(prize)
-    showResult.value = true
-    emit('spun', prize)
-  }
-  spinRaf = requestAnimationFrame(tick)
+  phase.value = 'rush'
+  applyRotate(teaseDeg, { duration: RUSH_MS, ease: RUSH_EASE })
+  await waitTransition(el, RUSH_MS)
+  if (!spinning.value) return
+
+  phase.value = 'crawl'
+  // 极短停顿，制造「要停了？」的错觉
+  await new Promise((r) => {
+    phaseTimer = window.setTimeout(r, RUSH_PAUSE_MS)
+  })
+  if (!spinning.value) return
+
+  applyRotate(finalDeg, { duration: CRAWL_MS, ease: CRAWL_EASE })
+  await waitTransition(el, CRAWL_MS)
+  if (!spinning.value) return
+
+  phase.value = 'settle'
+  await new Promise((r) => {
+    phaseTimer = window.setTimeout(r, SETTLE_MS)
+  })
+  if (!spinning.value) return
+
+  revealPrize(idx)
+}
+
+function spin() {
+  if (spinning.value || props.tickets <= 0) return false
+  if (!props.prizes.length) return false
+  sfxClick()
+  spinning.value = true
+  phase.value = 'rush'
+  highlightIdx = -1
+  draw()
+  startTenseMusic()
+
+  const idx = pickIndex()
+  runSpinSequence(idx)
   return true
 }
 
-function closeResult() {
-  sfxClick()
-  showResult.value = false
-  wonPrize.value = null
-}
-
-// 奖品池变化（抽中移除）时重绘转盘
 watch(
   () => props.prizes,
   () => {
@@ -256,7 +354,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
-  if (spinRaf) cancelAnimationFrame(spinRaf)
+  spinning.value = false
+  clearSpinListeners()
   stopTenseMusic()
 })
 
@@ -264,7 +363,7 @@ defineExpose({ spin })
 </script>
 
 <template>
-  <div class="wheel-root">
+  <div class="wheel-root" :class="[`phase-${phase}`, { 'is-spinning': spinning }]">
     <div class="wheel-wrap">
       <div class="wheel-box">
         <div class="pointer" aria-hidden="true">
@@ -275,24 +374,13 @@ defineExpose({ spin })
           <i v-for="n in 16" :key="n" class="light" :style="{ '--i': n }"></i>
         </div>
         <canvas ref="canvasRef" class="wheel-canvas" />
+        <div v-if="spinning" class="spin-veil" aria-hidden="true"></div>
       </div>
     </div>
 
-    <!-- 中奖全屏：仅 ❌ 可关 -->
-    <Teleport to="body">
-      <transition name="prize-pop">
-        <div v-if="showResult && wonPrize" class="prize-overlay" @click.stop>
-          <div class="prize-panel">
-            <button class="prize-close" type="button" aria-label="关闭" @click="closeResult">
-              ✕
-            </button>
-            <p class="prize-label">恭喜获得</p>
-            <div class="prize-icon" :style="{ backgroundImage: `url(${wonIcon})` }"></div>
-            <h3 class="prize-name">{{ wonPrize.name }}</h3>
-          </div>
-        </div>
-      </transition>
-    </Teleport>
+    <p class="spin-hint" :class="{ visible: spinning && PHASE_HINT[phase] }" aria-live="polite">
+      {{ PHASE_HINT[phase] }}
+    </p>
   </div>
 </template>
 
@@ -311,14 +399,55 @@ defineExpose({ spin })
   position: relative;
   width: min(72vmin, 540px);
   height: min(72vmin, 540px);
-  filter: drop-shadow(0 0 36px rgba(255, 123, 172, 0.4));
+}
+.wheel-box::before {
+  content: '';
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  box-shadow: 0 0 36px 8px rgba(255, 123, 172, 0.4);
+  pointer-events: none;
+  z-index: 0;
+  transition: box-shadow 0.4s ease;
+}
+.is-spinning .wheel-box::before {
+  box-shadow: 0 0 48px 14px rgba(255, 123, 172, 0.55), 0 0 80px 20px rgba(242, 196, 104, 0.25);
+}
+.phase-crawl .wheel-box::before,
+.phase-settle .wheel-box::before {
+  animation: suspense-glow 0.7s ease-in-out infinite alternate;
+}
+@keyframes suspense-glow {
+  from {
+    box-shadow: 0 0 36px 10px rgba(255, 123, 172, 0.45), 0 0 60px 16px rgba(242, 196, 104, 0.2);
+  }
+  to {
+    box-shadow: 0 0 56px 18px rgba(255, 190, 100, 0.65), 0 0 90px 28px rgba(255, 123, 172, 0.35);
+  }
 }
 .wheel-canvas {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   display: block;
   border-radius: 50%;
   will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+.spin-veil {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 18%,
+    rgba(255, 230, 168, 0.18),
+    transparent 42%
+  );
+  mix-blend-mode: soft-light;
 }
 .pointer {
   position: absolute;
@@ -330,6 +459,35 @@ defineExpose({ spin })
   flex-direction: column;
   align-items: center;
   filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.45));
+  transform-origin: 50% 12px;
+}
+.phase-rush .pointer {
+  animation: pointer-buzz 0.12s linear infinite;
+}
+.phase-crawl .pointer,
+.phase-settle .pointer {
+  animation: pointer-tick 0.55s ease-in-out infinite;
+}
+@keyframes pointer-buzz {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(-2deg);
+  }
+  50% {
+    transform: translateX(-50%) rotate(2deg);
+  }
+}
+@keyframes pointer-tick {
+  0%,
+  100% {
+    transform: translateX(-50%) rotate(-6deg) scale(1);
+  }
+  40% {
+    transform: translateX(-50%) rotate(5deg) scale(1.04);
+  }
+  70% {
+    transform: translateX(-50%) rotate(-3deg) scale(1.02);
+  }
 }
 .pointer-tri {
   width: 0;
@@ -366,6 +524,15 @@ defineExpose({ spin })
   animation: blink 1.2s ease-in-out infinite;
   animation-delay: calc(var(--i) * 0.08s);
 }
+.phase-rush .light {
+  animation-duration: 0.45s;
+}
+.phase-crawl .light,
+.phase-settle .light {
+  animation-duration: 0.28s;
+  background: #fff3c4;
+  box-shadow: 0 0 12px #ffe6a8, 0 0 18px #ff9fc4;
+}
 @keyframes blink {
   0%,
   100% {
@@ -376,86 +543,45 @@ defineExpose({ spin })
   }
 }
 
-.prize-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(20, 8, 32, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-.prize-panel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  width: min(86vw, 380px);
-  padding: clamp(36px, 5vmin, 48px) clamp(28px, 4vmin, 40px);
-  border-radius: 28px;
-  background: linear-gradient(165deg, rgba(99, 34, 92, 0.95), rgba(42, 17, 71, 0.96));
-  border: 1px solid rgba(255, 190, 218, 0.45);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(255, 123, 172, 0.35);
-}
-.prize-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 190, 218, 0.45);
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffeaf3;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease;
-}
-.prize-close:active {
-  transform: scale(0.92);
-}
-.prize-close:hover {
-  background: rgba(255, 123, 172, 0.35);
-}
-.prize-label {
-  font-size: clamp(14px, 2vmin, 17px);
-  letter-spacing: 0.28em;
-  color: var(--gold);
-}
-.prize-icon {
-  width: min(52vw, 220px);
-  height: min(52vw, 220px);
-  border-radius: 28px;
-  background-size: cover;
-  background-position: center;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 24px rgba(255, 150, 190, 0.4);
-}
-.prize-name {
-  font-size: clamp(28px, 5vmin, 40px);
-  font-weight: 800;
-  color: var(--gold-bright);
-  letter-spacing: 0.1em;
+.spin-hint {
+  min-height: 1.4em;
+  margin: 14px 0 0;
+  font-size: clamp(14px, 2.2vmin, 17px);
+  letter-spacing: 0.18em;
+  color: rgba(255, 230, 200, 0.92);
   text-align: center;
-}
-.prize-pop-enter-active,
-.prize-pop-leave-active {
-  transition: opacity 0.28s ease;
-}
-.prize-pop-enter-active .prize-panel,
-.prize-pop-leave-active .prize-panel {
-  transition: transform 0.32s cubic-bezier(0.22, 1.2, 0.36, 1), opacity 0.28s ease;
-}
-.prize-pop-enter-from,
-.prize-pop-leave-to {
   opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
-.prize-pop-enter-from .prize-panel,
-.prize-pop-leave-to .prize-panel {
-  opacity: 0;
-  transform: scale(0.82);
+.spin-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.phase-crawl .spin-hint,
+.phase-settle .spin-hint {
+  color: #ffe6a8;
+  animation: hint-pulse 0.9s ease-in-out infinite;
+}
+@keyframes hint-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phase-rush .pointer,
+  .phase-crawl .pointer,
+  .phase-settle .pointer,
+  .phase-crawl .wheel-box::before,
+  .phase-settle .wheel-box::before,
+  .phase-crawl .spin-hint,
+  .phase-settle .spin-hint {
+    animation: none;
+  }
 }
 </style>
