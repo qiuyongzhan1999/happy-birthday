@@ -1,5 +1,5 @@
 <script setup>
-// 幸运大转盘：两段式停转（高速 → 悬疑爬行 → 轻晃落定），揭晓前闪烁再弹窗
+// 幸运大转盘：单段连贯减速停转，停稳闪烁后弹窗揭晓
 import { inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getPrizeIconUrl } from '../composables/prizeIcons'
 import {
@@ -22,20 +22,16 @@ const confetti = inject('confetti', null)
 
 const canvasRef = ref(null)
 const spinning = ref(false)
-/** idle | rush | crawl | settle | reveal */
+/** idle | rush | settle | reveal */
 const phase = ref('idle')
 
 const COLORS = ['#ffe0ec', '#ffb3c9', '#f6d188', '#ffc4e0', '#e8b4f0', '#ffd6a8']
-/** 主旋转：先猛冲再长尾减速（合计约 20 秒） */
-const RUSH_MS = 16000
-const RUSH_EASE = 'cubic-bezier(0.08, 0.72, 0.02, 1)'
-/** 悬疑爬行：擦边后慢慢挪到正中 */
-const CRAWL_MS = 3000
-const CRAWL_EASE = 'cubic-bezier(0.22, 0.08, 0.18, 1)'
-/** 落定后闪烁再揭晓 */
+/** 单段连贯减速停转，约 20 秒（不再中途停顿再挪） */
+const SPIN_MS = 20000
+const SPIN_EASE = 'cubic-bezier(0.12, 0.75, 0.08, 1)'
+/** 停稳后短促定格再揭晓 */
+const SETTLE_MS = 450
 const REVEAL_HOLD_MS = 900
-const RUSH_PAUSE_MS = 400
-const SETTLE_MS = 600
 
 let ctx = null
 let D = 0
@@ -49,9 +45,8 @@ const iconImgs = []
 
 const PHASE_HINT = {
   idle: '',
-  rush: '命运齿轮正在加速…',
-  crawl: '慢下来了…会是它吗？',
-  settle: '指针锁定中…',
+  rush: '命运齿轮正在转动…',
+  settle: '好运揭晓中…',
   reveal: '好运揭晓！',
 }
 
@@ -288,28 +283,14 @@ async function runSpinSequence(idx) {
   const delta = (target - current + 360) % 360
   const finalDeg = from + spins * 360 + delta
 
-  // 擦边悬疑：只欠一点角度（绝不冲过再回退），再继续往前爬到正中
-  const missFrac = 0.38 + Math.random() * 0.28 // 约 0.4～0.66 扇区
-  const teaseDeg = finalDeg - step * missFrac
-
   clearSpinListeners()
   applyRotate(from)
   if (el) void el.offsetWidth
 
+  // 一次转到正中：长尾减速，视觉上自然停住，不再「停了又挪」
   phase.value = 'rush'
-  applyRotate(teaseDeg, { duration: RUSH_MS, ease: RUSH_EASE })
-  await waitTransition(el, RUSH_MS)
-  if (!spinning.value) return
-
-  phase.value = 'crawl'
-  // 极短停顿，制造「要停了？」的错觉
-  await new Promise((r) => {
-    phaseTimer = window.setTimeout(r, RUSH_PAUSE_MS)
-  })
-  if (!spinning.value) return
-
-  applyRotate(finalDeg, { duration: CRAWL_MS, ease: CRAWL_EASE })
-  await waitTransition(el, CRAWL_MS)
+  applyRotate(finalDeg, { duration: SPIN_MS, ease: SPIN_EASE })
+  await waitTransition(el, SPIN_MS)
   if (!spinning.value) return
 
   phase.value = 'settle'
@@ -413,8 +394,7 @@ defineExpose({ spin })
 .is-spinning .wheel-box::before {
   box-shadow: 0 0 48px 14px rgba(255, 123, 172, 0.55), 0 0 80px 20px rgba(242, 196, 104, 0.25);
 }
-.phase-crawl .wheel-box::before,
-.phase-settle .wheel-box::before {
+.phase-rush .wheel-box::before {
   animation: suspense-glow 0.7s ease-in-out infinite alternate;
 }
 @keyframes suspense-glow {
@@ -462,31 +442,20 @@ defineExpose({ spin })
   transform-origin: 50% 12px;
 }
 .phase-rush .pointer {
-  animation: pointer-buzz 0.12s linear infinite;
+  animation: pointer-buzz 0.14s linear infinite;
 }
-.phase-crawl .pointer,
-.phase-settle .pointer {
-  animation: pointer-tick 0.55s ease-in-out infinite;
+.phase-settle .pointer,
+.phase-reveal .pointer {
+  animation: none;
+  transform: translateX(-50%);
 }
 @keyframes pointer-buzz {
   0%,
   100% {
-    transform: translateX(-50%) rotate(-2deg);
+    transform: translateX(-50%) rotate(-1.2deg);
   }
   50% {
-    transform: translateX(-50%) rotate(2deg);
-  }
-}
-@keyframes pointer-tick {
-  0%,
-  100% {
-    transform: translateX(-50%) rotate(-6deg) scale(1);
-  }
-  40% {
-    transform: translateX(-50%) rotate(5deg) scale(1.04);
-  }
-  70% {
-    transform: translateX(-50%) rotate(-3deg) scale(1.02);
+    transform: translateX(-50%) rotate(1.2deg);
   }
 }
 .pointer-tri {
@@ -527,9 +496,8 @@ defineExpose({ spin })
 .phase-rush .light {
   animation-duration: 0.45s;
 }
-.phase-crawl .light,
 .phase-settle .light {
-  animation-duration: 0.28s;
+  animation-duration: 0.9s;
   background: #fff3c4;
   box-shadow: 0 0 12px #ffe6a8, 0 0 18px #ff9fc4;
 }
@@ -558,30 +526,7 @@ defineExpose({ spin })
   opacity: 1;
   transform: translateY(0);
 }
-.phase-crawl .spin-hint,
 .phase-settle .spin-hint {
   color: #ffe6a8;
-  animation: hint-pulse 0.9s ease-in-out infinite;
-}
-@keyframes hint-pulse {
-  0%,
-  100% {
-    opacity: 0.75;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .phase-rush .pointer,
-  .phase-crawl .pointer,
-  .phase-settle .pointer,
-  .phase-crawl .wheel-box::before,
-  .phase-settle .wheel-box::before,
-  .phase-crawl .spin-hint,
-  .phase-settle .spin-hint {
-    animation: none;
-  }
 }
 </style>
