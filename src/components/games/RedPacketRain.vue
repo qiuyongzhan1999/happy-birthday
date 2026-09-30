@@ -10,9 +10,6 @@ const confetti = inject('confetti', null)
 const cfg = CONFIG.redPacketRain || {}
 const DURATION = cfg.duration || 30
 const PENALTY = cfg.bombPenalty || 1
-const THRESHOLD = cfg.threshold || 15
-const MIN_R = cfg.minReward || 450
-const MAX_R = cfg.maxReward || 550
 
 const canvasRef = ref(null)
 const phase = ref('ready') // ready | play | result
@@ -47,8 +44,8 @@ function resize() {
 
 function spawn() {
   const isBomb = Math.random() < 0.34
-  // 尺寸随舞台宽度缩放：红包约为宽度的 9%~15%，炸弹 8%~18%（可大可小）
-  const size = isBomb ? W * (0.08 + Math.random() * 0.1) : W * (0.09 + Math.random() * 0.06)
+  // 尺寸随舞台宽度缩放：红包约为宽度的 4.5%~7.5%，炸弹 4%~9%（可大可小）
+  const size = isBomb ? W * (0.04 + Math.random() * 0.05) : W * (0.045 + Math.random() * 0.03)
   items.push({
     x: Math.random() * (W - size),
     y: -size - Math.random() * 80,
@@ -193,13 +190,8 @@ function settle() {
   cancelAnimationFrame(raf)
   clearInterval(countdownTimer)
   const n = caught.value
-  if (n === 0) {
-    displayAmount.value = 0
-  } else if (n <= THRESHOLD) {
-    displayAmount.value = n
-  } else {
-    displayAmount.value = MIN_R + ((Math.random() * (MAX_R - MIN_R + 1)) | 0)
-  }
+  // 每个红包固定 5 元：结算金额 = 接到的红包数 × 5
+  displayAmount.value = n > 0 ? n * 5 : 0
   sfxRedResult()
   if (displayAmount.value > 0) {
     confetti?.rain?.(2000)

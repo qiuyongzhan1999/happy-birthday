@@ -32,7 +32,7 @@ function onEnter() {
       <span class="orbit orbit--b"></span>
     </div>
 
-    <h1 class="title gold-text">小桐 · 生日快乐</h1>
+    <h1 class="title gold-text">生日快乐</h1>
     <p class="sub">今天是你专属的日子，一场甜蜜惊喜已经备好</p>
 
     <div class="claim-wrap">
